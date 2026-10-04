@@ -1,24 +1,8 @@
-import type Electron from 'electron';
-import type childProcess from 'child_process';
-
-// @ts-ignore
-export const inBrowser = typeof global === 'undefined';
-
-if (inBrowser === false) {
-	// @ts-ignore
-	window.electron = require('electron');
-	// @ts-ignore
-	window.child_process = require('child_process');
-}
-
-// @ts-ignore
-export const electron: typeof Electron = window.electron || {
-	ipcRenderer: {
-		sendSync: () => {},
-		send: () => {},
-		on: () => {},
-		once: () => {}
-	}
+import { isNative, events, invoke } from './native';
+export const inBrowser = !isNative;
+// Compatibility names only. No Electron or Node runtime is loaded by the Vue UI.
+export const electron = {
+ ipcRenderer: events,
+ shell: {openPath:(path:string)=>invoke('native_call',{op:'shell.openPath',args:[path]}),openExternal:(url:string)=>invoke('native_call',{op:'shell.openExternal',args:[url]})},
+ clipboard:{writeText:(text:string)=>invoke('native_call',{op:'clipboard.writeText',args:[text]})}
 };
-// @ts-ignore
-export const child_process: typeof childProcess = window.child_process || {};

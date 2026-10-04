@@ -1,5 +1,6 @@
 <template>
 	<div class="title ps-2">
+        <BridgePanel />
 		<span
 			class="logo"
 			style="cursor: pointer; -webkit-app-region: no-drag"
@@ -28,7 +29,8 @@
 					<Icon type="delete">清除浏览器缓存</Icon>
 				</a-doption>
 
-				<a-doption @click="exportData"> <Icon type="save">导出数据</Icon> </a-doption>
+				<a-doption @click="migrateLegacy"> <Icon type="upload">迁移旧版资料（复制）</Icon> </a-doption>
+                <a-doption @click="exportData"> <Icon type="save">导出数据</Icon> </a-doption>
 				<a-doption
 					class="border-bottom"
 					@click="importData"
@@ -83,11 +85,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h } from 'vue';
+import BridgePanel from './BridgePanel.vue';
+import { computed, h, ref } from 'vue';
 import { fetchRemoteNotify, date, about, getRemoteInfos } from '../utils';
 import { remote } from '../utils/remote';
 import TitleLink from './TitleLink.vue';
-import { Message, Modal } from '@arco-design/web-vue';
+import { Message, Modal, Input } from '@arco-design/web-vue';
 import { store } from '../store/index';
 import { router } from '../route';
 import { electron } from '../utils/node';
@@ -117,12 +120,11 @@ function toggleMode() {
 // 重启
 function relaunch() {
 	remote.app.call('relaunch');
-	remote.app.call('quit');
 }
 
 // 打开日志目录
 async function openLog() {
-	const path = await remote.path.call('join', await remote.app.call('getPath', 'logs'), date(Date.now()));
+	const path = await remote.app.call('getPath', 'logs');
 	shell.openPath(path);
 }
 
@@ -131,12 +133,20 @@ function allNotify() {
 	fetchRemoteNotify(true);
 }
 
+async function migrateLegacy() {
+ try {
+  const result=await remote.methods.call('importLegacy');
+  Object.assign(store,result.store);
+  Modal.success({title:'迁移完成',content:'已复制 '+result.report.browsers+' 个浏览器的资料。旧版配置和文件保持原样。',onOk:()=>remote.app.call('relaunch')});
+ } catch(error){Message.error(String(error));}
+}
+
 function importData() {
 	remote.dialog
 		.call('showOpenDialog', {
 			title: '选择导入的数据文件',
 			buttonLabel: '导入',
-			filters: [{ extensions: ['ocsdata'], name: 'ocsdata' }]
+			filters: [{ extensions: ['ocsdata', 'json'], name: 'ocsdata' }]
 		})
 		.then(async ({ canceled, filePaths }) => {
 			if (canceled === false && filePaths.length) {
@@ -147,7 +157,9 @@ function importData() {
 					// 如果 render 是加密字符串，先解密为明文再导入
 					if (typeof _store.render === 'string') {
 						const renderStr = _store.render as string;
-						const data = JSON.parse(remote.methods.callSync('decryptRenderString' as any, renderStr) as string);
+						let password: string | null = '';
+                        if (renderStr.startsWith('export1:')) {password=await exportPassword(false);if(password===null)return;}
+						const data = JSON.parse(await remote.methods.call(renderStr.startsWith('export1:')?'decryptExport':'decryptRenderString', renderStr, password) as string);
 						(_store as any).render = data;
 					}
 
@@ -164,7 +176,7 @@ function importData() {
 									if (!entity) continue;
 									if (entity.type === 'folder') {
 										folders.push(entity as any);
-									} else if (entity.type === 'browser' && (entity as any).cachePath === '$CACHE_PATH') {
+									} else if (entity.type === 'browser') {
 										(entity as any).cachePath = await remote.path.call(
 											'join',
 											store.paths.userDataDirsFolder,
@@ -183,7 +195,7 @@ function importData() {
 						content: () =>
 							h('div', [
 								'数据重启软件后生效。',
-								'如果您是导入其他电脑的OCS数据，请注意导入后重新初始化设置，或者自行重新安装脚本管理器。'
+								'此入口导入配置并使用独立的浏览器目录。复制旧版登录资料请使用“迁移旧版资料（复制）”。'
 							]),
 						okText: '重启软件',
 						cancelText: '稍后重启',
@@ -191,7 +203,6 @@ function importData() {
 						simple: false,
 						onOk() {
 							remote.app.call('relaunch');
-							remote.app.call('exit', 0);
 						}
 					});
 				} catch (err) {
@@ -215,6 +226,8 @@ function exportData() {
 				})
 				.then(async ({ canceled, filePath }) => {
 					if (canceled === false && filePath) {
+                        const password = await exportPassword(true);
+                        if (password === null) return;
 						const _store: typeof store = JSON.parse(JSON.stringify(store));
 
 						const root = _store.render.browser.root;
@@ -240,9 +253,9 @@ function exportData() {
 
 						// 导出前加密 render 数据，防止明文泄露
 						if (typeof _store.render !== 'string') {
-							(_store as any).render = remote.methods.callSync(
-								'encryptRenderString' as any,
-								JSON.stringify(_store.render)
+							(_store as any).render = await remote.methods.call(
+								'encryptExport',
+								JSON.stringify(_store.render), password
 							) as string;
 						}
 
@@ -255,9 +268,26 @@ function exportData() {
 						await remote.fs.call('writeFileSync', filePath + '.ocsdata', JSON.stringify(_store, null, 4));
 						Message.success('导出成功！');
 					}
-				});
+				}).catch(error=>Message.error('导出失败：'+String(error)));
 		}
 	});
+}
+function exportPassword(creating: boolean): Promise<string | null> {
+    const password=ref(''), repeat=ref('');
+    return new Promise(resolve=>Modal.confirm({
+        title: creating?'设置导出密码':'输入导出密码',
+        content:()=>h('div',[
+            h('p',creating?'此密码用于在其他电脑导入资料，请妥善保存。':'使用导出时设置的密码解密资料。'),
+            h(Input.Password,{modelValue:password.value,'onUpdate:modelValue':(v:string)=>password.value=v,placeholder:'导出密码'}),
+            ...(creating?[h(Input.Password,{modelValue:repeat.value,'onUpdate:modelValue':(v:string)=>repeat.value=v,placeholder:'再次输入密码',style:'margin-top:12px'})]:[])
+        ]),
+        onBeforeOk:()=>{
+            if(creating && (Array.from(password.value).length<8 || password.value!==repeat.value)){Message.error('密码至少 8 个字符，且两次输入一致');return false;}
+            if(!password.value){Message.error('请输入密码');return false;}
+            resolve(password.value);return true;
+        },
+        onCancel:()=>resolve(null)
+    }));
 }
 
 function openDevTools() {

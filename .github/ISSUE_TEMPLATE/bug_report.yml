@@ -39,8 +39,8 @@ body:
     id: version
     attributes:
       label: 应用版本
-      description: 可在设置 - 关于中查看
-      placeholder: "e.g., v2.10.0"
+      description: 请分别填写桌面版本和脚本面板中的版本
+      placeholder: "桌面 0.1.0 / 脚本 0.1.0"
     validations:
       required: true
 
@@ -79,5 +79,5 @@ body:
     id: logs
     attributes:
       label: 日志/截图
-      description: 如有错误日志或截图请在此粘贴
+      description: 请先移除 API Key、Cookie、访问令牌和个人课程信息，再粘贴日志或截图
       render: shell

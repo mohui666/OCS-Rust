@@ -156,7 +156,7 @@ import { resourceLoader } from '../../utils/resources.loader';
 import Icon from '../../components/Icon.vue';
 import { lang, store } from '../../store/index';
 import { Message } from '@arco-design/web-vue';
-import { child_process, electron } from '../../utils/node';
+import { electron } from '../../utils/node';
 import { remote } from '../../utils/remote';
 import { getRemoteInfos } from '../../utils';
 import { Status } from '../../utils/statusBar';
@@ -278,14 +278,8 @@ async function remove(group_name: string, file: ResourceFile) {
 	}
 }
 
-function openDownloadFolder() {
-	if (process.platform === 'win32') {
-		// 如果使用下面那个方法的话不会出现在最前面
-		child_process.exec(`explorer.exe "${store.paths.downloadFolder}"`);
-	} else {
-		electron.shell.openPath(store.paths.downloadFolder);
-	}
-}
+function openDownloadFolder() { electron.shell.openPath(store.paths.downloadFolder); }
+
 </script>
 
 <style scoped lang="less"></style>

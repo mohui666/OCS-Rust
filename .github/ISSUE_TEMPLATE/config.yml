@@ -1,11 +1,8 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: 📖 官方文档
-    url: https://docs.ocsjs.com/docs/quickly-start
-    about: 查看快速入门和使用文档
-  - name: 📚 脚本问题反馈
-    url: https://github.com/ocsjs/ocsjs/issues
-    about: 课程脚本相关问题请前往 ocsjs/ocsjs 仓库反馈
-  - name: 📢 官网
-    url: https://docs.ocsjs.com/
-    about: 访问官网获取最新版本和使用指南
+  - name: 使用说明
+    url: https://github.com/mohui666/OCS-Rust/blob/main/docs/guide.md
+    about: 桌面、AI 配置、脚本更新和迁移说明
+  - name: 验证范围
+    url: https://github.com/mohui666/OCS-Rust/blob/main/docs/verification.md
+    about: 当前发行平台与已知限制

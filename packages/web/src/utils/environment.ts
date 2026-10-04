@@ -36,7 +36,7 @@ export const Environment = {
 				},
 				...(await remote.methods.call('getValidBrowsers'))
 			]
-				.filter((b) => b.path && remote.fs.callSync('existsSync', b.path))
+				.filter((b) => b.path)
 				.map(async (b) => {
 					return {
 						...b,
@@ -111,7 +111,7 @@ export const Environment = {
 			const paths: string[] = await remote.fs.call('readdirSync', store.paths.extensionsFolder);
 			for (const file of paths.filter((f) => f !== '.DS_Store')) {
 				const extensionPath = await remote.path.call('join', store.paths.extensionsFolder, file);
-				const isDirectory = remote.methods.callSync('isDirectory', extensionPath);
+				const isDirectory = await remote.methods.call('isDirectory', extensionPath);
 				if (!isDirectory) continue;
 				const manifestPath = await remote.path.call('join', extensionPath, 'manifest.json');
 				const exists = await remote.fs.call('existsSync', manifestPath);
@@ -131,12 +131,6 @@ export const Environment = {
 	},
 
 	async getValidUserScript() {
-		const infos = await this.getRemoteInfos();
-		const userScripts = infos?.resourceGroups.find((group) => group.name === 'userjs')?.files || [];
-		const default_user_script = userScripts[0];
-		if (!default_user_script) {
-			return;
-		}
-		return default_user_script;
-	}
+        return {name: 'OCS 无限等待版 · Rust', url: await remote.methods.call('pinnedScript')};
+    }
 };

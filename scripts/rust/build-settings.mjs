@@ -1,0 +1,12 @@
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+const source = await readFile('assets/ocs-rust.user.js','utf8');
+const end = source.indexOf('\nconst STYLE = `');
+if (end < 0) throw new Error('OCS settings boundary missing');
+const begin = source.indexOf('var __defProp');
+let code = source.slice(begin,end);
+code = code.replace('exports2.start = lib.start;', 'globalThis.EUS = lib;\n  globalThis.OCS = exports2;\n  exports2.start = lib.start;');
+const css = source.slice(end + '\nconst STYLE = `'.length,source.indexOf('`;\n',end));
+await mkdir('packages/web/src/generated',{recursive:true});
+await writeFile('packages/web/src/generated/ocs-settings.js',code);
+await writeFile('packages/web/src/generated/ocs-style.css',css);
+console.log('Pinned OCS settings library extracted; course execution entry excluded.');

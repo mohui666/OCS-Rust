@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "answers": {"type": "array", "items": {"type": "string"}},
+          "confident": {"type": "boolean"},
+          "explanation": {"type": "string"},
+          "sources": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["id", "answers", "confident", "explanation", "sources"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["results"],
+  "additionalProperties": false
+}

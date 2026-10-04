@@ -245,29 +245,11 @@ export async function about() {
 }
 
 export async function changeTheme() {
-	const platform = await remote.methods.call('getPlatform');
-	document.body.classList.add('platform-' + platform);
-	if (platform !== 'darwin') {
-		if (store.render.setting.theme.dark) {
-			// 设置为暗黑主题
-			document.body.setAttribute('arco-theme', 'dark');
-			remote.win.call('setTitleBarOverlay', {
-				color: '#2C2C2C',
-				symbolColor: 'white'
-			});
-		} else {
-			// 恢复亮色主题
-			document.body.removeAttribute('arco-theme');
-			remote.win.call('setTitleBarOverlay', {
-				color: '#fff',
-				symbolColor: 'black'
-			});
-		}
-	}
+ if(store.render.setting.theme.dark)document.body.setAttribute('arco-theme','dark');else document.body.removeAttribute('arco-theme');
 }
 
 export function setAutoLaunch() {
-	remote.methods.call('autoLaunch');
+	remote.methods.call('autoLaunch', store.window.autoLaunch);
 }
 
 export function setAlwaysOnTop() {
@@ -309,6 +291,6 @@ export function goto(link: string) {
 /** 通过本地服务代理加载图标，解决跨域问题 */
 export function iconUrl(url?: string): string {
 	if (!url) return '';
-	const port = 15319;
-	return `http://localhost:${port}/icon?url=${encodeURIComponent(url)}`;
+	const port = store?.server?.port || location.port;
+	return `http://localhost:${port}/icon?url=${encodeURIComponent(url)}&token=${encodeURIComponent(store?.server?.authToken || new URLSearchParams(location.search).get('token') || '')}`;
 }

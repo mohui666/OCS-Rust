@@ -235,7 +235,7 @@ import { reactive, watch, nextTick, onMounted } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
 import { installExtensions } from '../utils/extension';
 import { addScriptFromUrl } from '../utils/user-scripts';
-import { child_process } from '../utils/node';
+
 import { Environment } from '../utils/environment';
 import { getDefaultBrowserName, newBrowser } from '../utils/browser';
 import { Browser } from '../fs/browser';
@@ -270,114 +270,13 @@ const _preset_steps = {
 				return;
 			}
 
-			// =========================== 安装新版本 ===========================
-			if (process.platform !== 'win32' && process.platform !== 'darwin') {
-				step.error = lang(
-					'setup_error_un_support_platform_when_auto_download_new_version',
-					'当前系统不支持自动更新软件，请前往官网 https://docs.ocsjs.com \n手动下载最新软件并安装和启动。'
-				);
-				return;
-			}
+            step.description = '未发现兼容浏览器，正在安装独立的 Chrome for Testing…';
+            try {
+                const path = await remote.methods.call('installBrowser');
+                store.render.setting.launchOptions.executablePath = path;
+                step.description = '浏览器已安装：' + path;
+            } catch (error) { step.error = String(error); }
 
-			const infos = await Environment.getRemoteInfos();
-			console.log(infos);
-			const app_download_url = infos?.versions[0].app_downloads?.[process.platform];
-			if (!app_download_url) {
-				step.error = lang(
-					'setup_error_no_windows_download_url_when_auto_download_new_version',
-					`未找到 ${process.platform} 版本的下载地址，请前往官网 https://docs.ocsjs.com \n手动下载最新软件并安装和启动。`,
-					{ platform: process.platform }
-				);
-				return;
-			}
-
-			const dest = await remote.path.call(
-				'join',
-				store.paths.downloadFolder,
-				app_download_url.split('/').pop() ||
-					(process.platform === 'win32' ? 'ocs-desktop-installer.exe' : 'ocs-desktop-installer.dmg')
-			);
-
-			step.description = lang(
-				'setup_error_auto_download_new_version_when_no_valid_browser',
-				'无可用的浏览器，正在下载并更新软件至最新版本： ' + infos?.versions[0]?.tag,
-				{ version: infos?.versions[0]?.tag || '' }
-			);
-			try {
-				const result = await new Promise<string | boolean | undefined>((resolve, reject) => {
-					Modal.confirm({
-						title: '警告',
-						content: '当前浏览器版本过高，点击确认将自动下载最新版本软件，下载后将有内置浏览器可用。',
-						maskClosable: false,
-						closable: false,
-						cancelText: '取消',
-						okText: '一键下载并安装',
-						onCancel(e) {
-							reject(new Error('用户取消下载，请自行更新，然后配置浏览器路径'));
-						},
-						async onOk() {
-							const existsSync = await remote.fs.call('existsSync', dest);
-							if (existsSync) {
-								resolve(true);
-								return;
-							}
-
-							step.description += '\n正在下载最新版本软件：' + app_download_url;
-							const fp = await download({
-								name: '最新软件下载',
-								dest: dest,
-								url: app_download_url
-							});
-							step.description += '\n下载完成，即将开始安装，请安装后重新初始化设置。';
-							resolve(fp);
-						}
-					});
-				});
-				if (result === true) {
-					step.error = '检测到最新软件版本已下载，正在打开安装程序中，请安装后重启软件并初始化设置。';
-					console.log(dest);
-					await new Promise<void>((resolve, reject) => {
-						Modal.confirm({
-							title: '警告',
-							content: step.error || '',
-							maskClosable: false,
-							closable: false,
-							cancelText: '取消',
-							okText: '一键安装',
-							onCancel(e) {
-								reject(new Error('你已取消安装，请自行更新软件或者重新初始化。'));
-							},
-							async onOk() {
-								// 关闭软件
-								step.error = '安装程序已启动，请安装后重启软件并初始化设置。';
-								child_process.execFileSync(`"${dest}"`, { shell: true, windowsHide: false });
-							}
-						});
-					});
-				} else if (typeof result === 'string') {
-					step.description += '\n最新版本软件下载完成，即将启动安装程序...';
-					emits('update:visible', false);
-					await new Promise<void>((resolve, reject) => {
-						Modal.info({
-							title: '提示',
-							content: '最新版本软件下载完成，点击确定启动安装程序，请安装后重新初始化设置。',
-							maskClosable: false,
-							closable: false,
-							okText: '确认安装',
-							onOk(e) {
-								// 关闭软件
-								step.error = '安装程序已启动，请安装后重启软件并初始化设置。';
-								child_process.execFileSync(`"${result}"`, { shell: true, windowsHide: false });
-							}
-						});
-					});
-				} else {
-					throw new Error('未知错误，请稍后重试，或者手动更新软件');
-				}
-			} catch (error) {
-				console.error(error);
-				step.error = String(error);
-			}
 		}
 	} as Step,
 	init_extensions: {

@@ -35,10 +35,7 @@ function openXTerm() {
 		xterm.write(log);
 	}
 
-	if (process?.shell) {
-		process.shell.stdout?.on('data', (data) => xterm.write(data));
-		process.shell.stderr?.on('data', (data) => xterm.write(`[错误] : ${data}`));
-	}
+	process?.on('log', (data: string) => xterm.write(data));
 
 	xterm.fit();
 }

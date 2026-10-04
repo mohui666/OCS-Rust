@@ -1,11 +1,15 @@
-# Vue 3 + Typescript + Vite
+# OCS Rust 界面
 
-This template should help get you started developing with Vue 3 and Typescript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + Arco Design + Vite。用于 Tauri 桌面、本地导航页和课程脚本内嵌 AI 设置页。
 
-## Recommended IDE Setup
+从仓库根目录运行：
 
-- [VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=johnsoncodehk.volar)
+```sh
+pnpm build:settings
+pnpm --dir packages/web exec vue-tsc --noEmit
+pnpm --dir packages/web exec vite build
+```
 
-## Type Support For `.vue` Imports in TS
+完整开发入口为根目录的 `pnpm dev`。生成的设置库位于 `src/generated`，应修改 `assets/ocs-rust.user.js` 后重新生成，不要手改构建产物。
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's `.vue` type support plugin by running `Volar: Switch TS Plugin on/off` from VSCode command palette.
+参见 [开发文档](../../docs/development.md)。

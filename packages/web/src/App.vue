@@ -79,27 +79,25 @@ import Setup from './components/Setup.vue';
 
 const { ipcRenderer } = electron;
 
-/** 异步保存，用于实时持久化（单次 IPC 调用，加密+写入在主进程完成） */
-async function saveStoreToLocal(_store: typeof store) {
-	try {
-		const shouldEncrypt = remote.methods.callSync('isEncryptionAvailable');
-		await remote.methods.call('saveStore', JSON.stringify(_store), shouldEncrypt);
-	} catch (e) {
-		console.error(e);
-	}
-}
-
-/** 同步版本保存，用于关闭时确保数据写入磁盘（单次 IPC 调用） */
-function saveStoreToLocalSync(_store: typeof store) {
-	try {
-		const shouldEncrypt = remote.methods.callSync('isEncryptionAvailable');
-		remote.methods.callSync('saveStore', JSON.stringify(_store), shouldEncrypt);
-	} catch (e) {
-		console.error(e);
-	}
+/** Rust encrypts and atomically persists the complete store. */
+let persistence = Promise.resolve();
+async function saveStoreToLocal(value: typeof store) {
+ const snapshot = JSON.stringify(value);
+ const save = persistence.catch(() => {}).then(() => remote.methods.call('saveStore', snapshot, true));
+ persistence = save;
+ await save;
 }
 
 onMounted(async () => {
+	ipcRenderer.on('ai-settings-changed', (_event: unknown, settings: any) => {
+		for (const key of ['common.settings.answererWrappers', 'common.settings.disabledAnswererWrapperNames']) {
+			store.render.setting.ocs.store[key] = settings.store[key] || [];
+		}
+		store.render.setting.ocs.openSync = settings.openSync;
+	});
+	ipcRenderer.on('ai-selection-changed', (_event: unknown, disabled: string[]) => {
+		store.render.setting.ocs.store['common.settings.disabledAnswererWrapperNames'] = disabled;
+	});
 	/** 开启 Ipc 通道监听 */
 	activeIpcRenderListener();
 
@@ -186,7 +184,7 @@ onMounted(async () => {
 		}
 	}
 
-	watch([() => store.render], debounce(performSave, 100), { deep: true });
+	watch([() => store.render, () => store.paths, () => store.window, () => store.app], debounce(() => performSave().catch(e => Modal.error({title:'保存失败',content:String(e)})), 100), { deep: true });
 
 	/** 全局唯一关闭处理 */
 	let isExiting = false;
@@ -204,10 +202,10 @@ onMounted(async () => {
 		console.log('保存数据中...');
 		const m = Modal.info({ content: '正在保存数据...', closable: false, maskClosable: false, footer: false });
 		store.render.browser.root = JSON.parse(JSON.stringify(root()));
-		saveStoreToLocalSync(store);
-		m.close();
-		console.log('数据已保存');
-		remote.app.call('exit', 0);
+		try {
+			await saveStoreToLocal(store);
+			await remote.app.call('exit', 0);
+		} catch (e) { isExiting = false; Modal.error({title:'保存失败，已取消退出',content:String(e)}); } finally { m.close(); }
 	});
 });
 

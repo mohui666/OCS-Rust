@@ -1,0 +1,127 @@
+use serde_json::{json, Value};
+use std::{env, fs, path::Path, path::PathBuf};
+
+fn expanded_path(value: &str) -> Option<PathBuf> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let path = if value == "~" {
+        dirs::home_dir()?
+    } else if let Some(rest) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    {
+        dirs::home_dir()?.join(rest)
+    } else {
+        PathBuf::from(value)
+    };
+    std::path::absolute(path).ok()
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                ["exe", "com", "cmd", "bat"]
+                    .iter()
+                    .any(|known| ext.eq_ignore_ascii_case(known))
+            })
+    }
+}
+
+fn from_search_path(name: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    let mut names = vec![name.to_owned()];
+    if cfg!(windows) && Path::new(name).extension().is_none() {
+        names.extend(["exe", "com", "cmd", "bat"].map(|ext| format!("{name}.{ext}")));
+    }
+    env::split_paths(&path)
+        .filter(|dir| dir.is_absolute())
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|path| is_executable(path))
+}
+
+fn executable(current: &str) -> Option<PathBuf> {
+    let current = current.trim();
+    let configured = if current.contains('/') || current.contains('\\') {
+        expanded_path(current).filter(|path| is_executable(path))
+    } else if !current.is_empty() {
+        from_search_path(current)
+    } else {
+        None
+    };
+    if configured.is_some() {
+        return configured;
+    }
+
+    let mut candidates = Vec::new();
+    if cfg!(target_os = "macos") {
+        let mut app_dirs = vec![PathBuf::from("/Applications")];
+        if let Some(home) = dirs::home_dir() {
+            app_dirs.push(home.join("Applications"));
+        }
+        for dir in app_dirs {
+            for binary in [
+                "ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+                "Codex.app/Contents/Resources/codex",
+                "Codex.app/Contents/Resources/codex-cli/bin/codex",
+            ] {
+                candidates.push(dir.join(binary));
+            }
+        }
+    }
+    if let Some(path) = from_search_path("codex") {
+        candidates.push(path);
+    }
+    if cfg!(unix) {
+        candidates.extend(
+            [
+                "/opt/homebrew/bin/codex",
+                "/usr/local/bin/codex",
+                "/usr/bin/codex",
+            ]
+            .map(PathBuf::from),
+        );
+        if let Some(home) = dirs::home_dir() {
+            candidates.push(home.join(".local/bin/codex"));
+        }
+    }
+    if cfg!(windows) {
+        if let Some(app_data) = env::var_os("APPDATA") {
+            candidates.push(PathBuf::from(app_data).join("npm/codex.cmd"));
+        }
+    }
+    candidates.into_iter().find(|path| is_executable(path))
+}
+
+pub fn detect(current_bin: &str, current_home: &str) -> Value {
+    // Inspect only paths and known filenames; never read login credentials or run Codex.
+    let mut homes: Vec<_> = expanded_path(current_home).into_iter().collect();
+    if let Ok(value) = env::var("CODEX_HOME") {
+        homes.extend(expanded_path(&value));
+    }
+    if let Some(home) = dirs::home_dir() {
+        homes.push(home.join(".codex"));
+    }
+    let home = homes.into_iter().find(|path| {
+        path.is_dir()
+            && ["auth.json", "config.toml", "models_cache.json"]
+                .iter()
+                .any(|name| path.join(name).is_file())
+    });
+    json!({ "codex_bin": executable(current_bin), "codex_home": home })
+}

@@ -14,7 +14,7 @@
 		</template>
 		<template v-else-if="state.loading">
 			<div class="p-5 text-center">
-				<a-spin tip="正在获取最新OCS配置..." />
+				<a-spin tip="正在加载OCS配置..." />
 			</div>
 		</template>
 
@@ -32,6 +32,9 @@
 							)
 						"
 					></span>
+					<div class="mt-2">
+						在下方“答题设置”中选择模型或填写 API，即可用于课程页面。
+					</div>
 				</a-alert>
 
 				<a-tabs
@@ -123,7 +126,7 @@ function setupAccordion(detailsList: HTMLDetailsElement[]) {
 function renderOCS() {
 	if (!root || !wrapper) return;
 	// @ts-ignore
-	const EUS = global.EUS as typeof import('easy-us');
+	const EUS = globalThis.EUS as typeof import('easy-us');
 	const { definedCustomElements, h, $, $ui, $store } = EUS;
 
 	try {
@@ -211,29 +214,14 @@ async function loadOCS() {
 	state.loading = true;
 	emits('loading');
 	try {
-		// @ts-ignore
-		if (global.OCS === undefined) {
-			// 加载 OCS
-			const code = await remote.methods.call('get', 'https://cdn.ocsjs.com/index.js');
-			await remote.webContents.call('executeJavaScript', code);
-		}
+		(globalThis as any).__OCS_RUST__ = { port: Store.server.port, token: Store.server.authToken };
+        await import('../generated/ocs-settings.js');
+        if (!state.css) state.css = (await import('../generated/ocs-style.css?raw')).default;
 
 		// @ts-ignore
-		if (global.EUS === undefined) {
-			// 加载 EUS
-			const code = await remote.methods.call('get', 'https://cdn.ocsjs.com/easy-us.js');
-			await remote.webContents.call('executeJavaScript', code);
-		}
-
-		if (state.css === '') {
-			// 加载样式
-			state.css = await remote.methods.call('get', 'https://cdn.ocsjs.com/style.css');
-		}
-
+		const OCS = globalThis.OCS as typeof import('@ocsjs/script');
 		// @ts-ignore
-		const OCS = global.OCS as typeof import('@ocsjs/script');
-		// @ts-ignore
-		const EUS = global.EUS as typeof import('easy-us');
+		const EUS = globalThis.EUS as typeof import('easy-us');
 
 		const { MemoryStoreProvider, $elements, h } = EUS;
 
@@ -242,8 +230,6 @@ async function loadOCS() {
 
 		OCS.$elements.root = root;
 		$elements.root = root;
-		console.log(OCS);
-		console.log(EUS);
 
 		/** 双向绑定数据 */
 		MemoryStoreProvider._source.store = store.value;

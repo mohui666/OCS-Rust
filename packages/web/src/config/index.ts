@@ -19,6 +19,11 @@ export const config = reactive({
 	 */
 	routes: [
 		{
+			name: 'ai-settings', path: '/ai-settings',
+			component: () => import('@/pages/ai-settings.vue'),
+			meta: { title: 'AI 答题设置', hideInMenu: true }
+		},
+		{
 			name: 'index',
 			path: '/',
 			redirect: '/simple',

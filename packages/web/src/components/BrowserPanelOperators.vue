@@ -85,7 +85,7 @@ import { reactive, ref } from 'vue';
 import { Browser } from '../fs/browser';
 import BrowserOperators from './browsers/BrowserOperators.vue';
 import Icon from './Icon.vue';
-import { nextTick } from 'process';
+import { nextTick } from 'vue';
 
 const props = defineProps<{
 	browser: Browser;

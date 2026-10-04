@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OCS Rust",
+  "version": "0.1.0",
+  "identifier": "local.ocs.rust",
+  "build": {
+    "frontendDist": "../packages/web/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm --dir packages/web exec vite --host 127.0.0.1 --port 1420 --strictPort"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "OCS Rust",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 520,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' customprotocol: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.ocsjs.com https://at.alicdn.com; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: asset: http://localhost:* http://127.0.0.1:* https:; connect-src ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* https:; font-src 'self' data: https:; media-src 'self' blob: data:; frame-src https: http://127.0.0.1:* http://localhost:*;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app"
+    ],
+    "resources": {
+      "../native-adapter/dist/": "adapter/",
+      "../assets/": "assets/",
+      "../packages/web/dist/": "web/",
+      "../LICENSE": "LICENSE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "infoPlist": "Info.plist"
+    },
+    "icon": [
+      "../packages/web/public/favicon.icns",
+      "../packages/web/public/favicon.ico",
+      "../packages/web/public/favicon.png"
+    ]
+  }
+}

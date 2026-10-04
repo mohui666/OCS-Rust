@@ -142,3 +142,23 @@ dist/
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+# Rust build outputs and generated frontend library
+/target/
+/src-tauri/gen/
+/packages/web/src/generated/
+**/__pycache__/
+!/crates/ocs-core/src/bin/
+!/crates/ocs-core/src/bin/*.rs
+
+# 本机验收、发布产物及个人配置不进入开源仓库
+/.local-docs/
+/docs/verification/
+/dist/
+**/bridge.config.json
+**/auth.json
+**/models_cache.json
+**/Cookies
+**/Cookies-journal
+**/Login Data
+**/Login Data-journal
+**/.DS_Store

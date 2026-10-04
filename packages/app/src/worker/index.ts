@@ -7,7 +7,6 @@ import { AppStore } from '../../types';
 import { AutomationScripts } from '../scripts/index';
 import { Config } from '../scripts/interface';
 import _get from 'lodash/get';
-import child_process from 'child_process';
 import { getBrowserMajorVersion, getExtensionPaths } from '../utils/browser';
 
 const { bgRedBright, bgBlueBright, bgYellowBright, bgGray } = new Chalk({ level: 2 });
@@ -44,6 +43,7 @@ export class ScriptWorker {
 	/** 浏览器中软件设置的名字 */
 	browserInfo?: BrowserInfo;
 	config?: BrowserConfig;
+	private closing?: Promise<void>;
 	static langs?: Langs;
 	static lang: (key: keyof Langs, def?: string, replace?: Record<string, string>) => string = (key, def, replace) => {
 		const result = _get(ScriptWorker.langs, key, def);
@@ -118,7 +118,7 @@ export class ScriptWorker {
 		}
 
 		/** 添加拓展启动参数 */
-		options.args = formatExtensionArguments(this.extensionPaths);
+		options.args = [...(options.args || []), ...formatExtensionArguments(this.extensionPaths)];
 		const start_time = Date.now();
 
 		/** =============================== 检测谷歌浏览器是否可用 =============================== */
@@ -177,6 +177,11 @@ export class ScriptWorker {
 		/** 启动浏览器 */
 		try {
 			await launchBrowser({
+				onCreated: (browser) => {
+					this.browser = browser;
+					browser.once('close', () => { this.browser = undefined; });
+				},
+				onCloseRequest: () => this.close(),
 				onLaunch: (browser) => {
 					this.browser = browser;
 
@@ -254,15 +259,26 @@ export class ScriptWorker {
 	}
 
 	async close() {
-		await this.browser?.close();
-		this.browser = undefined;
-		send('browser-closed');
-		process.exit();
+		if (this.closing) return this.closing;
+		this.closing = (async () => {
+			await this.browser?.close();
+			this.browser = undefined;
+			send('browser-closed');
+			process.exit();
+		})();
+		return this.closing;
 	}
 
 	// TODO
 	async bringToFront() {
 		this.browser?.pages().at(-1)?.bringToFront();
+	}
+
+	async goto(url: string) {
+		if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('仅允许 HTTP(S) 页面');
+		if (!this.browser) throw new Error('浏览器未运行');
+		const page = await this.browser.newPage();
+		await page.goto(url, { waitUntil: 'domcontentloaded' });
 	}
 
 	/** 跳转到特殊图像共享浏览器窗口 */
@@ -338,7 +354,6 @@ function loggerPrefix() {
  */
 export async function launchBrowser({
 	executablePath,
-	headless,
 	args,
 	userDataDir,
 	userscripts,
@@ -351,6 +366,8 @@ export async function launchBrowser({
 	browserInfo,
 	uid,
 	config,
+	onCreated,
+	onCloseRequest,
 	onLaunch
 }: Required<Pick<LaunchOptions, 'executablePath' | 'headless' | 'args'>> & {
 	/** 用户数据目录 */
@@ -373,12 +390,14 @@ export async function launchBrowser({
 	browserInfo?: BrowserInfo;
 	uid: string;
 	config?: BrowserConfig;
+	onCreated?: (browser: BrowserContext) => void;
+	onCloseRequest: () => Promise<void>;
 	onLaunch?: (browser: BrowserContext) => void;
 }) {
 	return new Promise<void>((resolve, reject) => {
 		chromium
 			.launchPersistentContext(userDataDir, {
-				headless,
+				headless: false,
 				viewport: null,
 				executablePath,
 				ignoreHTTPSErrors: true,
@@ -396,8 +415,13 @@ export async function launchBrowser({
 				]
 			})
 			.then(async (browser) => {
+				onCreated?.(browser);
 				// 处理浏览器初始
-				handleBrowserInit(browser, { enable_dialog: config?.enable_dialog, userDataDir });
+				handleBrowserInit(browser, { enable_dialog: config?.enable_dialog, userDataDir, close: onCloseRequest });
+                await browser.addInitScript(({port, token}) => { Object.defineProperty(window, '__OCS_RUST__', {value: {port, token}, configurable: false}); }, {port: serverPort, token: authToken});
+                await browser.route(new RegExp('^http://(127\\.0\\.0\\.1|localhost):' + serverPort + '/'), async route => {
+                    await route.continue({ headers: { ...route.request().headers(), 'auth-token': authToken } });
+                });
 
 				try {
 					/**
@@ -419,7 +443,7 @@ export async function launchBrowser({
 						);
 					};
 
-					const [blankPage] = browser.pages();
+					const blankPage = browser.pages()[0] || await browser.newPage();
 
 					// 加载本地导航页
 					await blankPage.goto(bookmarksPageUrl || 'about:blank');
@@ -429,7 +453,7 @@ export async function launchBrowser({
 
 					// 必须先打开开发者模式，才能关闭额外拓展页，否则打开开发者模式可能会重启插件，导致出现新的额外页面
 					// 关闭拓展加载时弹出的首页
-					waitAndCloseExtensionHomepage({ browser, closeableExtensionHomepages });
+					waitAndCloseExtensionHomepage({ browser, closeableExtensionHomepages }).catch(error => console.warn(String(error)));
 
 					// 安装用户脚本
 					const warn = await setupUserScripts({ browser, userscripts, step, enabledScriptCount });
@@ -447,6 +471,7 @@ export async function launchBrowser({
 					// 启动完成
 					resolve();
 				} catch (err) {
+					await browser.close();
 					reject(err);
 				}
 			})
@@ -461,7 +486,7 @@ export async function launchBrowser({
  *
  */
 async function initScripts(urls: string[], browser: BrowserContext) {
-	console.log('install ', urls);
+	console.log('正在安装用户脚本', urls.length);
 	let installCont = 0;
 	let retryCount = 0;
 	const maxRetries = 120;
@@ -670,7 +695,7 @@ function browserNetworkRoute(authToken: string, browser: BrowserContext) {
 		const headerValue = await req.headerValue('auth-token');
 
 		if (headerValue !== authToken) {
-			return;
+			return route.fulfill({ status: 403, body: 'Forbidden' });
 		}
 
 		const { page: targetPageUrl, property, args }: { page: string; property: string; args: any[] } = req.postDataJSON();
@@ -678,12 +703,12 @@ function browserNetworkRoute(authToken: string, browser: BrowserContext) {
 		try {
 			const page = browser?.pages().find((p) => p.url().includes(targetPageUrl));
 			if (!page) {
-				return;
+				return route.fulfill({ status: 404, body: 'Page not found' });
 			}
 
 			const targetFunction: Function = _get(page, property);
 			if (typeof targetFunction !== 'function') {
-				return;
+				return route.fulfill({ status: 400, body: 'Unknown page method' });
 			}
 
 			if (property === 'waitForResponse' || property === 'waitForRequest') {
@@ -738,14 +763,14 @@ function browserNetworkRoute(authToken: string, browser: BrowserContext) {
 					url: targetPageUrl,
 					property:
 						property === 'click' ? '点击' : property === 'fill' ? '填写' : property === 'check' ? '选中' : property,
-					args: JSON.stringify(args)
+					args: '[redacted]'
 				})
 			);
 		}
 	});
 }
 
-function handleBrowserInit(browser: BrowserContext, config: { enable_dialog?: boolean; userDataDir: string }) {
+function handleBrowserInit(browser: BrowserContext, config: { enable_dialog?: boolean; userDataDir: string; close: () => Promise<void> }) {
 	// 防检测
 	browser.addInitScript({
 		content: 'Object.defineProperty(navigator, "webdriver", { get: () => false });console.log(navigator)'
@@ -756,15 +781,12 @@ function handleBrowserInit(browser: BrowserContext, config: { enable_dialog?: bo
 		if (browser.pages().length === 0) {
 			clearInterval(interval);
 
-			await browser.close({
-				reason: 'no pages'
-			});
+			await config.close();
 		}
 	}, 100);
 
 	browser.once('close', () => {
 		send('browser-closed');
-		process.exit();
 	});
 
 	const pageHandle = (page: Page) => {
@@ -798,13 +820,9 @@ function handleBrowserInit(browser: BrowserContext, config: { enable_dialog?: bo
 }
 
 function openUrl(url: string) {
-	let cmd = 'start';
-	if (process.platform === 'darwin') {
-		cmd = 'open';
-	} else if (process.platform === 'linux') {
-		cmd = 'xdg-open';
-	}
-	child_process.exec(`${cmd} ${url}`);
+ const parsed = new URL(url);
+ if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported download URL');
+ send('open-external', url);
 }
 
 /**

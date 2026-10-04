@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "answers": {"type": "array", "items": {"type": "string"}},
+    "confident": {"type": "boolean"},
+    "explanation": {"type": "string"},
+    "sources": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["answers", "confident", "explanation", "sources"],
+  "additionalProperties": false
+}

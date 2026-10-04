@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 登录态题库</title>
+<style>
+body{font:16px/1.65 -apple-system,BlinkMacSystemFont,sans-serif;background:#f5f7fa;color:#1c293b;margin:0;padding:40px 20px}main{max-width:760px;margin:auto;background:white;border:1px solid #e1e6ed;border-radius:18px;padding:32px}h1{font-size:27px;margin-top:0}label{display:block;margin:16px 0 6px}input,textarea,select,button{box-sizing:border-box;font:inherit;border:1px solid #bac7d5;border-radius:8px;padding:10px}input,textarea{width:100%}button{cursor:pointer;background:#164e83;color:white;margin-top:16px}a{color:#164e83}pre{white-space:pre-wrap;background:#f1f5f9;padding:16px;border-radius:8px}small{color:#586779}#status{color:#17664b}button:disabled{opacity:.5}
+</style><main>
+<h1>AI 整页题库</h1><p id="status">正在检查服务…</p>
+<p>超星章节测验和作业：首题自动收集当前页文字题，一次请求生成整页答案，后续逐题读取缓存。其他页面继续逐题查询。</p>
+<p>将下面的订阅链接粘贴到 OCS「全局设置 → 题库配置」，解析器选择「默认」。</p>
+<input id="subscription" readonly aria-label="题库订阅链接"><button id="copy">复制链接</button>
+<p><small>使用 OCS 中配置的 Codex 登录或 AI API，按所选服务的规则消耗额度。OCS 线程数量建议为 1；超时由题库设置控制，0 表示无限等待。答案由 AI 生成，请核对。此地址仅在本机有效。</small></p>
+<hr><h2>测试搜题</h2>
+<form id="form"><label for="title">题目</label><textarea id="title" required rows="3">1+2 等于多少？</textarea>
+<label for="type">题型</label><select id="type"><option value="single">单选</option><option value="multiple">多选</option><option value="judgement">判断</option><option value="completion">填空</option><option value="">自动判断 / 简答</option></select>
+<label for="options">选项（每行一个，可留空）</label><textarea id="options" rows="4">A. 1
+B. 2
+C. 3
+D. 4</textarea><button id="search">使用 AI 搜题</button></form>
+<pre id="result" aria-live="polite">尚未搜题</pre></main>
+<script>
+const prefix=location.pathname.replace(/\/$/,'');
+const subscription=location.origin+prefix+'/config.json';
+document.querySelector('#subscription').value=subscription;
+document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(subscription);document.querySelector('#copy').textContent='已复制';}catch{document.querySelector('#subscription').select();}};
+fetch(prefix+'/status').then(r=>r.json()).then(s=>{document.querySelector('#status').textContent='本地服务运行中 · '+s.model+' '+s.reasoning_effort+' · 已解答 '+s.completed+' 题 / AI 调用 '+s.codex_calls+' 次 / 缓存命中 '+s.cache_hits+' 次 / 最近一批 '+s.last_batch_size+' 题';}).catch(()=>{document.querySelector('#status').textContent='本地服务未连接';});
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();const button=document.querySelector('#search');const result=document.querySelector('#result');button.disabled=true;result.textContent='正在调用 AI，请稍候…';try{const response=await fetch(prefix+'/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.querySelector('#title').value,options:document.querySelector('#options').value,type:document.querySelector('#type').value})});const r=await response.json();result.textContent=r.code===1?'答案：'+r.answer+'\n解释：'+r.explanation+'\n'+(r.cached?'来自本机缓存':'用时 '+r.elapsed_seconds+' 秒')+'\n联网搜索：'+r.web_search_calls+' 次'+(r.sources.length?'\n来源：\n'+r.sources.join('\n'):''):'未取得答案：'+r.msg;}catch(error){result.textContent='连接失败：'+error.message;}finally{button.disabled=false;}};
+</script></html>

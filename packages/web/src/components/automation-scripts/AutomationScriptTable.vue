@@ -103,7 +103,7 @@ import { Modal, TableColumnData } from '@arco-design/web-vue';
 import uniqueId from 'lodash/uniqueId';
 import { store } from '../../store';
 import Icon from '../Icon.vue';
-import type { Config } from '@ocs-desktop/app/src/scripts/interface';
+import type { Config } from '../../types/desktop';
 import { remote } from '../../utils/remote';
 import xlsx from 'xlsx';
 
@@ -290,7 +290,7 @@ function importTemplateExcel() {
 		})
 		.then(async ({ canceled, filePaths }) => {
 			if (canceled === false && filePaths.length) {
-				const text = await remote.fs.call('readFileSync', filePaths[0]);
+				const text = await remote.fs.call('readFileBytes', filePaths[0]);
 				const book = xlsx.read(text, { type: 'array' });
 
 				const excel = book.SheetNames.map((name) => ({

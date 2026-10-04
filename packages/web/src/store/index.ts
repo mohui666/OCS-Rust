@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
 import { remote } from '../utils/remote';
 import defaultsDeep from 'lodash/defaultsDeep';
-import type { AppStore, UserScripts } from '@ocs-desktop/app';
+import type { AppStore, UserScripts } from '../types/desktop';
 import { CommonUserScript } from '../types/user.script';
 import { FolderOptions } from '../fs/interface';
 import { Browser } from '../fs/browser';
@@ -49,6 +49,7 @@ export type WebStore = {
 		launchOptions: {
 			custom: boolean;
 			executablePath: string;
+			restoreSession: boolean;
 		};
 		/** 当前的主题 */
 		theme: {
@@ -134,7 +135,8 @@ const _store: AppStore & { render: WebStore } = defaultsDeep(remote['electron-st
 			showSideBarText: true,
 			launchOptions: {
 				custom: false,
-				executablePath: ''
+				executablePath: '',
+				restoreSession: true
 			},
 			theme: {
 				dark: false
@@ -168,24 +170,13 @@ const _store: AppStore & { render: WebStore } = defaultsDeep(remote['electron-st
 	} as WebStore
 });
 
-// 解密数据（兼容新旧加密格式）
-// @ts-ignore - render 在磁盘上可能是加密后的字符串
-if (typeof _store.render === 'string') {
-	try {
-		console.log('_store', _store);
-		// @ts-ignore
-		const renderStr = _store.render as string;
-		const data = JSON.parse(remote.methods.callSync('decryptRenderString' as any, renderStr));
-		Reflect.set(_store, 'render', data);
-	} catch (e) {
-		console.error('数据解密失败：' + e);
-	}
-}
+// Removed mode must not be reactivated by persisted preferences.
+Reflect.deleteProperty(_store.render.setting.launchOptions, 'headless');
 
 /** 数据存储对象 */
 export const store: AppStore & { render: WebStore } = reactive(_store);
 
-console.log('store', store);
+
 // @ts-ignore
 window.store = store;
 

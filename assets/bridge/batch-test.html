@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>OCS 整页搜题验证</title>
+<style>body{font:17px/1.6 system-ui;max-width:850px;margin:40px auto;padding:20px}article{background:#f5f7fa;margin:12px 0;padding:16px;border-radius:10px}button{padding:12px 24px;margin-right:12px;font:inherit}pre{white-space:pre-wrap;background:#eef4f8;padding:20px}iframe{display:none}</style>
+<h1>OCS 整页搜题验证</h1><p>使用与 OCS 相同的题目结构和题库字段收集器，一次提交下面四题，然后逐题读取缓存。</p>
+<article class="TiMu"><div class="Zy_TItle"><div class="clearfix">1.【单选题】11+7 等于多少？</div></div><input id="answertype1" value="0" type="hidden"><ul><li><span class="after">16</span></li><li><span class="after">18</span></li><li><span class="after">20</span></li></ul></article>
+<article class="TiMu"><div class="Zy_TItle"><div class="clearfix">2.【多选题】下列哪些数是质数？</div></div><input id="answertype2" value="1" type="hidden"><ul><li><span class="after">7</span></li><li><span class="after">8</span></li><li><span class="after">11</span></li></ul></article>
+<article class="TiMu"><div class="Zy_TItle"><div class="clearfix">3.【判断题】三角形有三条边。</div></div><input id="answertype3" value="3" type="hidden"><ul><li><span class="after">正确</span></li><li><span class="after">错误</span></li></ul></article>
+<article class="TiMu"><div class="Zy_TItle"><div class="clearfix">4.【填空题】按顺序填空：6×7=____，9×9=____。</div></div><input id="answertype4" value="2" type="hidden"><ul><li><textarea></textarea></li><li><textarea></textarea></li></ul></article>
+<button id="collect">检查整页收集</button><button id="run">真实验证四题一次搜完</button><pre id="output">尚未运行</pre>
+<script src="page_collector.js"></script><script>
+const first={title:'11+7 等于多少？',options:'16\n18\n20',type:'single'};
+const prefix=location.pathname.replace(/\/batch-test.html$/,'');
+const output=document.querySelector('#output');
+const expected=['18','7#11','正确','42#81'];
+const status=()=>fetch(prefix+'/status').then(r=>r.json());
+function extractionChecks(){
+ const qs=collectPageQuestions(first);
+ const notes=[];const check=(ok,label)=>{if(!ok)throw new Error(label+'失败');notes.push(label+'通过');};
+ check(qs.length===4,'四题收集');check(qs.map(q=>q.type).join(',')==='single,multiple,judgement,completion','四种题型');
+ check(collectPageQuestions({...first,title:'不在本页的题目'}).length===0,'不收集无关题目');
+ check(collectPageQuestions({...first,options:'无关选项'}).length===0,'选项匹配');
+ check(qs.every(q=>collectPageQuestions(q).length===4),'当前页任意题均能收集全页');
+ check(collectPageQuestions({title:first.title}).length===4,'仅题干在线搜题');
+ return {qs,notes};
+}
+document.querySelector('#collect').onclick=()=>{try{const r=extractionChecks();output.textContent=r.notes.join('\n')+'\n\n'+JSON.stringify(r.qs,null,2);}catch(e){output.textContent=e.message;}};
+document.querySelector('#run').onclick=async()=>{
+ const button=document.querySelector('#run');button.disabled=true;
+ try{const {qs,notes}=extractionChecks();const before=await status();const results=[];output.textContent=notes.join('\n')+'\n正在一次解答 '+qs.length+' 题…';
+ for(let i=0;i<qs.length;i++){
+  const start=performance.now();const response=await fetch(prefix+'/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...qs[i],pageQuestions:collectPageQuestions(qs[i])})});
+  const value=await response.json();results.push({number:i+1,answer:value.answer,expected:expected[i],passed:value.answer===expected[i]&&value.code===1,cached:value.cached,batch_size:value.batch_size,milliseconds:Math.round(performance.now()-start)});
+  output.textContent=JSON.stringify(results,null,2);
+ }
+ const after=await status();const report={passed:results.every(r=>r.passed)&&after.codex_calls-before.codex_calls===1,questions:qs.length,codex_calls:after.codex_calls-before.codex_calls,cache_hits:after.cache_hits-before.cache_hits,results};
+ output.textContent=(report.passed?'整页验证通过':'请检查结果')+'\n'+JSON.stringify(report,null,2);
+ }catch(e){output.textContent='验证失败：'+e.message;}finally{button.disabled=false;}
+};
+</script></html>

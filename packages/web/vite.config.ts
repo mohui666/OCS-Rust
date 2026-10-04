@@ -7,7 +7,7 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
 	build: {
-		outDir: '../app/public',
+		outDir: 'dist',
 		rollupOptions: {
 			output: {
 				manualChunks(id) {

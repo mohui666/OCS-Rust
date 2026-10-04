@@ -68,6 +68,12 @@
 		<a-card title="浏览器设置">
 			<BrowserPath></BrowserPath>
 
+			<Description label="恢复登录和上次页面">
+				<a-tooltip content="下次启动保留会话 Cookie，并恢复之前的标签页。网站主动退出登录或登录过期仍需重新登录。">
+					<a-switch v-model="store.render.setting.launchOptions.restoreSession" />
+				</a-tooltip>
+			</Description>
+
 			<Description label="原生弹窗">
 				<a-tooltip content="启用后，浏览器中的原版弹窗可能会影响脚本运行">
 					<a-switch v-model="store.render.setting.browser.enableDialog" />
@@ -199,11 +205,13 @@ const state = reactive({
 
 /** 重置设置 */
 async function reset() {
-	// @ts-ignore
-	store.version = undefined;
-	remote.app.call('relaunch');
-	remote.app.call('exit', 0);
+ store.app.video_frame_rate = 1;
+ store.window.alwaysOnTop = false;
+ store.window.autoLaunch = false;
+ await remote.methods.call('saveStore', JSON.stringify(store), true);
+ await remote.app.call('relaunch');
 }
+
 async function onUserDataDirsFolderChange(previous: string, current: string) {
 	// 更改全部浏览器缓存路径
 	const browsers = Folder.from(store.render.browser.root.uid).findAll((e) => e.type === 'browser') as Browser[];

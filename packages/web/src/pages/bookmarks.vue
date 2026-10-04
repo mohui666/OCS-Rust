@@ -167,11 +167,10 @@
 								class="bookmark-item"
 								:style="{ '--item-index': idx }"
 							>
-								<img
-									:data-img-src="bookmark?.icon || ''"
-									class="icon"
-									:src="iconUrl(bookmark?.icon)"
-								/>
+								<span class="bookmark-icon-box">
+									<img v-if="!failedIcons[bookmark.url]" class="bookmark-icon" :src="bookmark.icon" :alt="bookmark.name" @error="failedIcons[bookmark.url] = true" />
+									<span v-else class="bookmark-icon-fallback">{{ bookmark.name.slice(0, 2) }}</span>
+								</span>
 								<span class="bookmark-name">{{ bookmark?.name }}</span>
 								<a-tooltip
 									background-color="rgba(20, 20, 30, 0.95)"
@@ -191,13 +190,19 @@
 
 <script setup lang="ts">
 import { onMounted, ref, reactive } from 'vue';
-import { OCSApi } from '@ocs-desktop/common/src/api';
 import { BookmarkResource } from '../../../common/src/api';
-import { iconUrl } from '../utils/index';
 
 type BookMark = BookmarkResource;
 
-const bookmarks = ref<BookMark[]>([]);
+const failedIcons = reactive<Record<string, boolean>>({});
+const bookmarks = ref<BookMark[]>([{ group: '网课网站', values: [
+	{ name: '超星学习通', url: 'https://chaoxing.com', icon: 'site-icons/chaoxing.ico' },
+	{ name: '知道智慧树', url: 'https://www.zhihuishu.com', icon: 'site-icons/zhihuishu.ico' },
+	{ name: '智慧职教（MOOC学院）', url: 'https://mooc.icve.com.cn/cms/index.do', icon: 'site-icons/icve.ico' },
+	{ name: '职教云', url: 'https://zjy2.icve.com.cn/', icon: 'site-icons/zjy.ico' },
+	{ name: '中国大学MOOC', url: 'https://www.icourse163.org/', icon: 'site-icons/mooc.png' },
+	{ name: '雨课堂', url: 'https://www.yuketang.cn/web', icon: 'site-icons/yuketang.ico' }
+]}]);
 
 /** 从当前 URL 中解析 uid 参数 */
 function getCurrentUid(): string | null {
@@ -222,47 +227,30 @@ window.setBookmarkLoadingState = (_state) => {
 };
 
 onMounted(async () => {
-	const infos = await OCSApi.getInfos();
-	console.log('OCS API infos:', infos);
-	console.log('bookmark data:', infos.bookmark);
-
 	document.title = 'OCS - 导航页';
-
-	// 直接同步填充书签数据
-	for (let i = 0; i < infos.bookmark.length; i++) {
-		const bookmark = infos.bookmark[i] as BookMark;
-		console.log(`Processing bookmark[${i}]:`, bookmark);
-
-		bookmarks.value[i] = {
-			group: bookmark.group,
-			values: bookmark.values.filter(Boolean)
-		};
-	}
 
 	// 主动通过本地 API 获取浏览器信息
 	const uid = getCurrentUid();
 	if (uid) {
 		try {
 			const port = location.port || '15319';
-			const res = await fetch(`http://localhost:${port}/api/bookmark/browser-info?uid=${uid}`);
+			const res = await fetch(`http://localhost:${port}/api/bookmark/browser-info?uid=${uid}&token=${encodeURIComponent(new URLSearchParams(location.search).get('token') || '')}`);
 			const info = await res.json();
 			if (info) {
 				const nameEl = document.querySelector('#browser-name');
 				const tagsEl = document.querySelector('#browser-tags');
 				const notesEl = document.querySelector('#browser-notes');
-				if (nameEl) nameEl.innerHTML = info.name || '未知名称';
+				if (nameEl) nameEl.textContent = info.name || '未知名称';
 				if (tagsEl) {
-					tagsEl.innerHTML = (info.tags || [])
-						.map(
-							(t: { color: string; name: string }) =>
-								`<span style="background: linear-gradient(135deg, ${t.color}, ${adjustColor(
-									t.color,
-									-20
-								)});" class="browser-tag">${t.name}</span>`
-						)
-						.join('');
-				}
-				if (notesEl) notesEl.innerHTML = info.notes || '未知';
+                    tagsEl.replaceChildren(...(info.tags || []).map((t: {color: string; name: string}) => {
+                        const tag = document.createElement('span');
+                        tag.className = 'browser-tag';
+                        tag.style.backgroundColor = t.color;
+                        tag.textContent = t.name;
+                        return tag;
+                    }));
+                }
+				if (notesEl) notesEl.textContent = info.notes || '未知';
 			}
 		} catch (e) {
 			console.error('获取浏览器信息失败', e);
@@ -283,7 +271,7 @@ function openInApp() {
 	const uid = getCurrentUid();
 	if (uid) {
 		const port = location.port || '15319';
-		fetch(`http://localhost:${port}/api/bookmark/show-browser-in-app?uid=${uid}`);
+		fetch(`http://localhost:${port}/api/bookmark/show-browser-in-app?uid=${uid}&token=${encodeURIComponent(new URLSearchParams(location.search).get('token') || '')}`);
 	}
 }
 </script>
@@ -890,25 +878,12 @@ body:not([arco-theme='dark']) & {
 	}
 }
 
-.icon {
-	width: 48px;
-	height: 48px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid #e1e1e1;
-	border-radius: 100%;
-	cursor: pointer;
-
-	&:hover {
-		border: 1px solid #70d5fd;
-	}
-
-	object,
-	img {
-		width: 24px;
-		height: 24px;
-		display: block;
-	}
+.bookmark-icon-box {
+ width: 52px; height: 52px; flex: 0 0 52px; display: inline-flex;
+ align-items: center; justify-content: center; border-radius: 12px;
+ background: white; overflow: hidden;
 }
+.bookmark-icon { width: 36px; height: 36px; object-fit: contain; display: block; }
+.bookmark-icon-fallback { color: #165dff; font-size: 17px; font-weight: 600; }
+
 </style>

@@ -28,6 +28,7 @@
 					<span class="ms-1">启动</span>
 				</a-button>
 			</a-tooltip>
+
 		</template>
 
 		<template v-else-if="process.status === 'launched'">

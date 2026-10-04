@@ -8,7 +8,7 @@ import { Folder, root } from './folder';
 import { BrowserOptions, BrowserOperateHistory, Tag, BrowserType, EntityOptions } from './interface';
 import { remote } from '../utils/remote';
 import { RawAutomationScript } from '../components/automation-scripts';
-import { child_process } from '../utils/node';
+
 
 export class Browser extends Entity implements BrowserOptions {
 	type: BrowserType;
@@ -44,7 +44,8 @@ export class Browser extends Entity implements BrowserOptions {
 	async launch() {
 		const process = new Process(this, {
 			executablePath: store.render.setting.launchOptions.executablePath,
-			headless: false
+			headless: false,
+			args: store.render.setting.launchOptions.restoreSession ? ['--restore-last-session'] : []
 		});
 		processes.push(process);
 		const reactiveProcess = Process.from(this.uid);
@@ -64,24 +65,8 @@ export class Browser extends Entity implements BrowserOptions {
 	 * 适用于模拟更真实的浏览器环境
 	 */
 	async onlyLaunch() {
-		const extensionPaths: string[] = [];
-		// @ts-ignore
-		const paths: string[] = await remote.fs.call('readdirSync', store.paths.extensionsFolder);
-
-		for (const file of paths) {
-			extensionPaths.push(await remote.path.call('join', store.paths.extensionsFolder, file));
-		}
-		const cmd = ` "${store.render.setting.launchOptions.executablePath}" ${[
-			'--window-position=0,0',
-			'--no-first-run',
-			'--no-default-browser-check',
-			`--user-data-dir="${this.cachePath}"`
-		]
-			.concat(formatExtensionArguments(extensionPaths))
-			.join(' ')} http://localhost:${store.server.port || 15319}/index.html#/bookmarks`;
-		console.log(cmd);
-		child_process.exec(cmd);
-	}
+  await remote.methods.call('launchBrowserOnly', store.render.setting.launchOptions.executablePath, this.cachePath, this.uid);
+ }
 
 	/** 重启浏览器 */
 	async relaunch() {

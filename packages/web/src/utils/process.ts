@@ -1,132 +1,53 @@
-import { ChildProcess } from 'child_process';
 import { remote } from './remote';
+import { invoke, events } from './native';
 import { lang, store } from '../store';
-import { LaunchOptions } from 'playwright-core';
+import type { LaunchOptions } from 'playwright-core';
 import { reactive } from 'vue';
-import type { ScriptWorker } from '@ocs-desktop/app';
-import { Browser } from '../fs/browser';
+import type { Browser } from '../fs/browser';
 import { Message } from '@arco-design/web-vue';
 import EventEmitter from 'events';
-import { child_process } from './node';
 import { notify } from './notify';
 import { Status } from './statusBar';
 import { filterScriptsNeedingInstall } from './script-version';
-
-export type RemoteScriptWorker = <W extends keyof ScriptWorker = keyof ScriptWorker>(
-	event: W,
-	...args: ScriptWorker[W] extends { (...args: any[]): any } ? Parameters<ScriptWorker[W]> : any[]
-) => void;
-
-/**
- * 运行进程
- */
+export type RemoteScriptWorker = (event: string, ...args: any[]) => Promise<any>;
 export class Process extends EventEmitter {
-	uid: string;
-	shell?: ChildProcess;
-	worker?: RemoteScriptWorker;
-	/** 状态 */
-	status: 'closed' | 'closing' | 'launching' | 'launched' = 'closed';
-	/** 浏览器实体信息 */
-	browser: Browser;
-	/** 浏览器启动参数 */
-	launchOptions: Required<LaunchOptions>;
-	/** 输出 */
-	logs: string[] = [];
-
-	video: HTMLVideoElement | undefined = undefined;
-	stream: MediaStream | undefined = undefined;
-
-	static from(uid: string) {
-		return processes.find((p) => p.uid === uid);
-	}
-
-	// 从进程列表中移除
-	static remove(uid: string) {
-		const index = processes.findIndex((p) => p.uid === uid);
-		if (index !== -1) {
-			processes.splice(index, 1);
-		}
-	}
-
-	constructor(browser: Browser, launchOptions: LaunchOptions) {
-		super();
-		this.browser = browser;
-		this.uid = browser.uid;
-		this.launchOptions = launchOptions as any;
-	}
-
-	/**
-	 * 使用 child_process 运行 ocs 命令
-	 */
-	async init(onConsole?: (data: any) => void) {
-		this.shell = child_process.fork(
-			await remote.path.call('join', await remote.app.call('getAppPath'), './script.js'),
-			{
-				stdio: ['ipc'],
-				env: process.env
-			}
-		);
-		this.worker = createRemoteScriptWorker(this.shell);
-
-		this.shell.stdout?.on('data', (data: any) => {
-			this.logs.push(data.toString());
-			onConsole?.(data.toString());
-		});
-		this.shell.stderr?.on('data', (data: any) => {
-			onConsole?.(data.toString());
-			remote.logger.call('error', String(data));
-			this.logs.push(`${this.browser.name} 错误`, data);
-			notify(`${this.browser.name} 错误`, data, this.browser.uid, {
-				duration: 60 * 1000,
-				copy: true,
-				type: 'error'
-			});
-		});
-
-		/** 监听器 */
-		const listeners: Record<string, (...args: any[]) => void> = {
-			/** 浏览器启动 */
-			launched: async () => {
-				this.status = 'launched';
-			},
-			/**
-			 * 浏览器关闭
-			 * 可以由 browser.close() 关闭
-			 * 或者进程主动触发
-			 */
-			'browser-closed': () => {
-				console.log('browser-closed', this.uid);
-				// 从进程列表中移除
-				Process.remove(this.uid);
-			}
-		};
-
-		this.shell.on('message', ({ event, args }: { event: string; args: any[] }) => {
-			// 将 shell 的事件共享到当前的对象
-			this.emit(event, ...args);
-			if (listeners[event]) {
-				listeners[event](...args);
-			}
-		});
-
-		// 初始化进程数据
-		this.worker('init', {
-			store,
-			cachePath: this.browser.cachePath,
-			uid: this.uid,
-			automationScripts: this.browser.automationScripts,
-			browserInfo: {
-				name: this.browser.name,
-				notes: this.browser.notes,
-				tags: this.browser.tags
-			},
-			config: {
-				enable_dialog: store.render.setting.browser.enableDialog
-			},
-			langs: store.render.langs as any
-		});
-	}
-
+ uid: string;
+ worker: RemoteScriptWorker;
+ status: 'closed'|'closing'|'launching'|'launched' = 'closed';
+ browser: Browser;
+ launchOptions: LaunchOptions;
+ logs: string[] = [];
+ video: HTMLVideoElement | undefined;
+ stream: MediaStream | undefined;
+ private listener?: (...args: any[]) => void;
+ static from(uid:string) { return processes.find(p=>p.uid===uid); }
+ static remove(uid:string) { const i=processes.findIndex(p=>p.uid===uid); if(i>=0) processes.splice(i,1); }
+ constructor(browser:Browser,options:LaunchOptions) {
+  super(); this.browser=browser; this.uid=browser.uid; this.launchOptions=options;
+  this.worker=(event,...args)=>invoke('worker_call',{uid:this.uid,event,args});
+ }
+ async init(onConsole?: (data:any)=>void) {
+  this.listener=(_event:any, data:any)=>{
+   const args=data.args||[];
+   if(data.event==='launched') this.status='launched';
+   if(data.event==='log'||data.event==='worker-error') {
+    const text=String(args[0]??'');this.logs.push(text);if(this.logs.length>2000)this.logs.shift();
+    onConsole?.(text); this.emit('log',text+'\r\n');
+    if(data.event==='worker-error') notify(this.browser.name+' 错误',text,this.uid,{type:'error',copy:true});
+   }
+   if(data.event==='browser-closed'||data.event==='exit') {
+    this.status='closed'; this.stream?.getTracks().forEach(t=>t.stop());
+    Process.remove(this.uid);Status.clear();
+    if(data.event==='exit'&&this.listener)events.removeListener('worker:'+this.uid,this.listener);
+   }
+   this.emit(data.event,...args);
+  };
+  events.on('worker:'+this.uid,this.listener);
+  try {
+   await invoke('worker_start',{uid:this.uid});
+   await this.worker('init',{store,cachePath:this.browser.cachePath,uid:this.uid,automationScripts:this.browser.automationScripts,browserInfo:{name:this.browser.name,notes:this.browser.notes,tags:this.browser.tags},config:{enable_dialog:store.render.setting.browser.enableDialog},langs:store.render.langs});
+  } catch(error) {await invoke('worker_stop',{uid:this.uid}).catch(()=>{});events.removeListener('worker:'+this.uid,this.listener);Process.remove(this.uid);throw error;}
+ }
 	async launchPreCheck() {
 		// 检查
 		if (!this.launchOptions.executablePath) {
@@ -179,7 +100,7 @@ export class Process extends EventEmitter {
 				}
 				Status.clear();
 			});
-			this.shell?.once('exit', (code) => {
+			this.once('exit', () => {
 				Status.clear();
 			});
 			return { scriptsToInstall, enabledScriptCount: enabledUserScripts.length };
@@ -188,81 +109,24 @@ export class Process extends EventEmitter {
 		}
 	}
 
-	/** 启动文件 */
-	launch() {
-		return new Promise<void | number | null>((resolve, reject) => {
-			this.status = 'launching';
-			this.launchPreCheck()
-				.then((result) => {
-					if (result) {
-						this.once('launched', () => {
-							resolve();
-						});
-						this.shell?.once('exit', (code) => {
-							resolve(code);
-						});
-						this.worker?.('launch', {
-							userDataDir: this.browser.cachePath,
-							// 这里要加密编码，防止路径中有中文等特殊字符，会无法安装脚本
-							enabledScriptCount: result.enabledScriptCount,
-							userscripts: result.scriptsToInstall.map((item) =>
-								item.script.isLocalScript
-									? `http://localhost:${store.server.port}/api/local-userscript?path=${encodeURIComponent(
-											item.script.info?.code_url || item.script.url
-									  )}`
-									: item.script.info?.code_url || item.script.url
-							),
-							...this.launchOptions
-						});
-					}
-				})
-				.catch(reject);
-		});
-	}
-
-	/** 关闭进程 */
-	async close() {
-		// 标记为 closing ，使监控页面，以及操作栏的图标可以判断状态
-		this.status = 'closing';
-		return new Promise<void>((resolve) => {
-			this.once('browser-closed', resolve);
-			// 关闭进程
-			this.worker?.('close');
-		});
-	}
-
-	/** 显示当前的浏览器  */
-	bringToFront() {
-		if (this.status === 'launched' && this.launchOptions) {
-			const action = `http://localhost:${store.server.port}/ocs-action_bring-to-top`;
-			child_process.exec(
-				`"${this.launchOptions.executablePath}" --user-data-dir="${this.browser.cachePath}" "${action}"`
-			);
-			this.worker?.('bringToFront');
-			Message.warning('已置顶，如未生效，电脑底部任务栏闪烁的浏览器图标即为置顶浏览器。');
-		} else {
-			Message.warning('必须先启动文件');
-		}
-	}
-
-	toString() {
-		return '[Process]';
-	}
+ async launch() {
+  this.status='launching';
+  try {
+   const result=await this.launchPreCheck();
+   if(!result) throw new Error('浏览器启动检查失败');
+   await this.worker('launch',{
+    userDataDir:this.browser.cachePath,
+    enabledScriptCount:result.enabledScriptCount,
+    userscripts:result.scriptsToInstall.map(item=>item.script.isLocalScript
+     ? 'http://localhost:'+store.server.port+'/api/local-userscript?path='+encodeURIComponent(item.script.info?.code_url||item.script.url)+'&token='+encodeURIComponent(store.server.authToken)
+     : item.script.info?.code_url||item.script.url),
+    ...this.launchOptions
+   });
+   this.status='launched';
+  } catch(error) {await invoke('worker_stop',{uid:this.uid});Process.remove(this.uid);throw error;}
+ }
+ async close() {this.status='closing';await invoke('worker_stop',{uid:this.uid});this.status='closed';this.stream?.getTracks().forEach(t=>t.stop());Process.remove(this.uid);}
+ bringToFront() {if(this.status==='launched')this.worker('bringToFront').catch(e=>Message.error(String(e)));else Message.warning('必须先启动文件');}
+ toString(){return '[Process]';}
 }
-
 export const processes: Process[] = reactive([]);
-
-/**
- * 创建  ScriptWorker Shell 调用 APi
- * @param shell
- */
-function createRemoteScriptWorker(shell: ChildProcess) {
-	return <W extends keyof ScriptWorker, F extends ScriptWorker[W]>(
-		event: W,
-		...args: F extends { (...args: any[]): any } ? Parameters<F> : any[]
-	) => {
-		if (shell.connected) {
-			shell.send({ event, args });
-		}
-	};
-}

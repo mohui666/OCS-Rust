@@ -323,155 +323,59 @@ onMounted(() => {
 /**
  * 关闭视频显示
  */
+const captures = new Map<string, () => void>();
 async function closeVideo() {
-	for (const process of processes) {
-		process.stream?.getTracks().forEach((track) => {
-			track.stop();
-		});
-	}
+ for (const stop of captures.values()) stop();
+ captures.clear();
+ for (const process of processes) { process.stream?.getTracks().forEach(track=>track.stop()); process.video=undefined; process.stream=undefined; }
 }
-
-/**
- * 刷新视频显示
- */
 async function refreshVideo() {
-	try {
-		state.loading = true;
-
-		// 将所有浏览器跳转至 webrtc 对接页面
-
-		await Promise.all(
-			processes.map(
-				(process) =>
-					new Promise<void>((resolve) => {
-						process.once('webrtc-page-loaded', resolve);
-						process.worker?.('gotoWebRTCPage');
-					})
-			)
-		);
-
-		const processStatus: Map<string, boolean> = new Map();
-		for (const process of processes) {
-			processStatus.set(process.uid, false);
-		}
-
-		let retryCount = 20;
-
-		async function loop() {
-			retryCount--;
-			console.log('looping', retryCount);
-
-			// 抓取屏幕
-			const sources: DesktopCapturerSource[] = await remote.methods.call('captureDesktopScreen');
-			console.log('sources', sources);
-
-			// 未完成的进程抓取屏幕
-			await Promise.all(
-				processes
-					.filter((p) => processStatus.get(p.uid) === false)
-					.map((process) => {
-						return new Promise<void>((resolve, reject) => {
-							getBrowserVideo(process.uid, sources)
-								.then((res) => {
-									if (!res) {
-										return resolve();
-									}
-
-									process.stream = res.stream;
-
-									process.stream?.getTracks().forEach((track) => {
-										track.applyConstraints({
-											/** 尽量减低帧率不占用高内存 */
-											frameRate: store.app.video_frame_rate ?? 1,
-											/** 横纵比 */
-											aspectRatio:
-												store.render.dashboard.video.aspectRatio === 0
-													? undefined
-													: store.render.dashboard.video.aspectRatio
-										});
-									});
-									process.video = res.video;
-
-									// 挂载视频
-									mountVideo(process);
-
-									processStatus.set(process.uid, true);
-
-									resolve();
-								})
-								.catch((err) => {
-									console.error(err);
-									resolve();
-								});
-						});
-					})
-			);
-
-			// 已完成的进程关闭 webrtc 对接页面
-			await Promise.all(
-				processes
-					.filter((p) => processStatus.get(p.uid) === true)
-					.map(
-						(process) =>
-							new Promise<void>((resolve) => {
-								process.once('webrtc-page-closed', resolve);
-								process.worker?.('closeWebRTCPage');
-							})
-					)
-			);
-
-			// 如果还有未完成的进程，则等待 3s 后再次执行
-			if (processes.filter((p) => processStatus.get(p.uid) === false).length !== 0 && retryCount > 0) {
-				await new Promise((resolve) => setTimeout(resolve, 3000));
-				await loop();
-			}
-		}
-
-		await loop();
-	} catch (e) {
-		Modal.error({
-			content: '获取数据错误，请检查软件是否有录制应用权限：' + e,
-			title: '错误'
-		});
-	}
-
-	state.loading = false;
+ state.loading=true;
+ await closeVideo();
+ try {
+  for (const process of launchedProcesses.value) {
+   await process.worker('gotoWebRTCPage');
+   let source: any;
+   try {
+    for (let attempt=0;attempt<8&&!source;attempt++) {
+     await new Promise(resolve=>setTimeout(resolve,250));
+     const sources=await remote.methods.call('captureDesktopScreen');
+     source=sources.find((s:any)=>String(s.name).includes(process.uid));
+    }
+    if(!source) throw new Error('无法识别窗口 '+process.browser.name+'，请检查系统录屏权限');
+    const result=await getBrowserVideo(process.uid,[source]);
+    process.video=result.video;process.stream=result.stream;
+    mountVideo(process);
+   } finally {await process.worker('closeWebRTCPage');}
+  }
+ } catch(e) {Modal.error({title:'监控画面获取失败',content:String(e)});} finally {state.loading=false;}
 }
-
-async function getBrowserVideo(uid: string, sources: DesktopCapturerSource[]) {
-	const source = sources.find((s) => RegExp(uid).test(s.name));
-	if (!source) {
-		return;
-	}
-
-	try {
-		const stream = await navigator.mediaDevices.getUserMedia({
-			audio: false,
-			video: {
-				// @ts-ignore
-				mandatory: {
-					chromeMediaSource: 'desktop',
-					chromeMediaSourceId: source.id
-				}
-			}
-		});
-
-		const video = document.createElement('video');
-		video.srcObject = stream;
-		video.style.display = 'block';
-		video.style.width = '100%';
-		video.poster = source.thumbnail.toDataURL();
-		video.onloadedmetadata = (e) => video.play();
-		return { video, stream };
-	} catch (e) {
-		console.log(e);
-	}
+async function getBrowserVideo(uid:string,sources:any[]) {
+ const source=sources[0]; const canvas=document.createElement('canvas');
+ const ctx=canvas.getContext('2d')!; let stopped=false;let timer:ReturnType<typeof setTimeout>;
+ const draw=async()=>{
+  const url=await remote.methods.call('captureWindow',source.id);
+  const img=new Image();img.src=url;await img.decode();
+  if(stopped)return;
+  if(canvas.width!==img.width||canvas.height!==img.height){canvas.width=img.width;canvas.height=img.height;}
+  ctx.drawImage(img,0,0);
+ };
+ await draw();
+ const fps=Math.min(15,Math.max(1,store.app.video_frame_rate||1));
+ const stream=canvas.captureStream(fps);const video=document.createElement('video');
+ video.srcObject=stream;video.muted=true;video.autoplay=true;video.playsInline=true;
+ video.style.cssText='display:block;width:100%';
+ const stop=()=>{stopped=true;clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());};
+ captures.set(uid,stop);
+ const loop=async()=>{if(stopped||!stream.active){stop();return;}try{await draw();timer=setTimeout(loop,1000/fps);}catch(e){stop();Modal.error({title:'监控已停止',content:String(e)});}};
+ timer=setTimeout(loop,1000/fps);
+ return {video,stream};
 }
 //   挂载视频
 function mountVideo(process: Process) {
 	const slot = document.querySelector(`#video-${process.uid}`);
 	// 如果 slot.children.length === 0 说明没有挂载视频
-	if (slot && slot.children.length === 0 && process.video) {
+	if (slot && process.video && slot.firstElementChild !== process.video) {
 		slot.replaceChildren(process.video);
 	}
 }

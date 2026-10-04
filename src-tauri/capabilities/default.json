@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Local OCS window only; remote pages have no native capabilities.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
