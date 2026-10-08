@@ -150,6 +150,41 @@ pub fn command(config: &Config, directory: &Path, output: &Path, schema: &Path) 
     }
     c
 }
+
+fn codex_failure(stdout: &[u8], stderr: &[u8]) -> &'static str {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    )
+    .to_lowercase();
+    if ["unexpected argument", "unknown feature", "unrecognized option"]
+        .iter()
+        .any(|s| text.contains(s))
+    {
+        return "Codex 命令行版本不兼容，请在 AI 题库设置中选择新版 Codex 程序";
+    }
+    if ["usage limit", "quota", "rate limit", "429"]
+        .iter()
+        .any(|s| text.contains(s))
+    {
+        return "Codex 额度或速率受限，请在 Codex 中查看额度后重试";
+    }
+    if ["unauthorized", "401", "not logged", "refresh_token"]
+        .iter()
+        .any(|s| text.contains(s))
+    {
+        return "Codex 登录已失效，请在终端执行 codex login";
+    }
+    if ["not supported", "model_not_found"]
+        .iter()
+        .any(|s| text.contains(s))
+    {
+        return "当前 Codex 账号不支持所选模型，请修改本地 config.json";
+    }
+    "Codex 调用失败，请检查登录状态和网络后重试"
+}
+
 #[async_trait]
 impl Runner for CodexRunner {
     async fn run(&self, questions: &[Question], config: &Config) -> Result<Value> {
@@ -184,31 +219,7 @@ impl Runner for CodexRunner {
         )
         .await?;
         if !success {
-            let text = format!(
-                "{}{}",
-                String::from_utf8_lossy(&stdout),
-                String::from_utf8_lossy(&stderr)
-            )
-            .to_lowercase();
-            if ["usage limit", "quota", "rate limit", "429"]
-                .iter()
-                .any(|s| text.contains(s))
-            {
-                bail!("Codex 额度或速率受限，请在 Codex 中查看额度后重试")
-            }
-            if ["unauthorized", "401", "not logged", "refresh_token"]
-                .iter()
-                .any(|s| text.contains(s))
-            {
-                bail!("Codex 登录已失效，请在终端执行 codex login")
-            }
-            if ["not supported", "model_not_found"]
-                .iter()
-                .any(|s| text.contains(s))
-            {
-                bail!("当前 Codex 账号不支持所选模型，请修改本地 config.json")
-            }
-            bail!("Codex 调用失败，请检查登录状态和网络后重试")
+            bail!(codex_failure(&stdout, &stderr))
         }
         if !output.is_file() {
             bail!("Codex 没有返回答案")
@@ -222,5 +233,36 @@ impl Runner for CodexRunner {
             .count();
         result["web_search_calls"] = json!(count);
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::codex_failure;
+
+    #[test]
+    fn incompatible_cli_is_not_reported_as_login_or_network_failure() {
+        for error in [
+            "error: unexpected argument '--ignore-user-config' found",
+            "Error: Unknown feature flag: browser_use",
+            "unrecognized option --ephemeral",
+        ] {
+            let message = codex_failure(b"", error.as_bytes());
+            assert!(message.contains("版本不兼容"));
+            assert!(!message.contains("登录"));
+            assert!(!message.contains("网络"));
+        }
+    }
+
+    #[test]
+    fn existing_failure_categories_remain_distinct() {
+        for (error, expected) in [
+            ("usage limit", "额度"),
+            ("401 Unauthorized", "登录已失效"),
+            ("model_not_found", "不支持所选模型"),
+            ("connection refused", "网络"),
+        ] {
+            assert!(codex_failure(error.as_bytes(), b"").contains(expected));
+        }
     }
 }
