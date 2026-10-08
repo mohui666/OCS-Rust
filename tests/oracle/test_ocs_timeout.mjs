@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source = fs.readFileSync(process.argv[2] || new URL('./ocs-unlimited.user.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(process.argv[2] || new URL('./ocs-unlimited.user.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const handlerStart = source.indexOf('  async function defaultAnswerWrapperHandler(');
 const handlerEnd = source.indexOf('\n    return searchInfos;\n  }', handlerStart);
 assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
@@ -17,6 +17,7 @@ for (const seconds of [0, 180]) {
   let reply;
   const context = {
     URL, console: { error() {} },
+    CommonProject: { scripts: { settings: { cfg: { disabledAnswererWrapperNames: [] } } } },
     AnswerWrapperHandlerConfig: { timeout_seconds: seconds },
     rustFastFill: { observe: async () => {} },
     request: () => new Promise(resolve => { reply = resolve; }),

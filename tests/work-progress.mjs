@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
+const reportDir = process.argv[3] || 'docs/verification';
+await mkdir(reportDir, { recursive: true });
 const require = createRequire(new URL('../packages/app/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const source = await readFile('assets/ocs-rust.user.js', 'utf8');
@@ -64,7 +67,7 @@ try {
   let m = await read(page);
   assert.equal(m.value.total, 85); assert.equal(m.value.filled, 0); assert.equal(m.value.requested, 0);
   assert.match(m.text, /Thinking/); assert.match(m.text, /当前请求 85 题/); assert.match(m.text, /已返回 0\/85/);
-  await page.screenshot({ path: 'docs/verification/work-progress-thinking.png' });
+  await page.screenshot({ path: join(reportDir, 'work-progress-thinking.png') });
   await page.clock.fastForward(610000);
   m = await read(page); assert(m.value.elapsed >= 610); assert(!m.done); assert.equal(m.requests, 1);
   await page.evaluate(() => window.worker.emit('stop'));
@@ -107,6 +110,6 @@ try {
     records.push({ name: options.remote ? 'remote-provider-not-polled' : 'non-rust-provider-not-labelled-thinking', passed: true });
     await other.close();
   }
-  await writeFile('docs/verification/work-progress.json', JSON.stringify({ realChromium: true, clock: 'virtual', realModelCalls: 0, liveCourseTested: false, records }, null, 2) + '\n');
+  await writeFile(join(reportDir, 'work-progress.json'), JSON.stringify({ realChromium: true, clock: 'virtual', realModelCalls: 0, liveCourseTested: false, records }, null, 2) + '\n');
   console.log(JSON.stringify(records, null, 2));
 } finally { await browser.close(); }
