@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
+const reportDir = process.argv[3] || 'docs/verification';
+await mkdir(reportDir, { recursive: true });
 const require = createRequire(new URL('../packages/app/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
 const executablePath = process.argv[2];
@@ -155,5 +158,5 @@ try {
     records.push({ name: close ? 'close-while-paused' : 'pause-resume', passed: true });
     await page.close();
   }
-  await writeFile('docs/verification/fast-fill.json', JSON.stringify({ realChromium: true, clock: 'virtual', realModelCalls: 0, liveCourseTested: false, records }, null, 2) + '\n');
+  await writeFile(join(reportDir, 'fast-fill.json'), JSON.stringify({ realChromium: true, clock: 'virtual', realModelCalls: 0, liveCourseTested: false, records }, null, 2) + '\n');
 } finally { await browser.close(); }

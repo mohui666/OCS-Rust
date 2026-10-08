@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       				OCS 网课助手
-// @version    				0.1.0
+// @version    				0.1.3
 // @description				OCS(online-course-script) 网课助手，官网 https://docs.ocsjs.com ，专注于帮助大学生从网课中释放出来 让自己的时间把握在自己的手中，拥有人性化的操作页面，流畅的步骤提示，支持  【超星学习通】 【知到智慧树】 【职教云】 【智慧职教】 【中国大学MOOC】 【雨课堂】 等网课的学习，作业。具体的功能请查看脚本悬浮窗中的教程页面。
 // @author     				enncy
 // @license    				MIT
@@ -1113,6 +1113,7 @@ var __publicField = (obj, key, value) => {
   store_provider.MemoryStoreProvider = MemoryStoreProvider;
   class GMStoreProvider {
     constructor() {
+      this.tabWrites = Promise.resolve();
       if (self === top && typeof globalThis.GM_listValues !== "undefined") {
         for (const val of GM_listValues()) {
           if (val.startsWith("_tab_change_")) {
@@ -1137,19 +1138,26 @@ var __publicField = (obj, key, value) => {
       return GM_listValues();
     }
     getTab(key) {
-      return new Promise((resolve, reject) => {
+      return this.tabWrites.then(() => new Promise((resolve, reject) => {
         GM_getTab((tab = {}) => resolve(Reflect.get(tab, key)));
-      });
+      }));
     }
     setTab(key, value) {
-      return new Promise((resolve, reject) => {
-        GM_getTab((tab = {}) => {
-          Reflect.set(tab, key, value);
-          GM_saveTab(tab);
-          this.set(this.getTabChangeHandleKey(Reflect.get(tab, const_1$1.$const.TAB_UID), key), value);
-          resolve();
+      // GM_saveTab replaces the whole tab: progress and results must not race.
+      const next = this.tabWrites.then(() => new Promise((resolve, reject) => {
+        GM_getTab(async (tab = {}) => {
+          try {
+            Reflect.set(tab, key, value);
+            await GM_saveTab(tab);
+            this.set(this.getTabChangeHandleKey(Reflect.get(tab, const_1$1.$const.TAB_UID), key), value);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
         });
-      });
+      }));
+      this.tabWrites = next.catch(() => {});
+      return next;
     }
     addChangeListener(key, listener) {
       return GM_addValueChangeListener(key, (_, pre, curr, remote) => {
@@ -4022,7 +4030,7 @@ var __publicField = (obj, key, value) => {
     writes: Promise.resolve(),
     save(value) {
       this.latest = value;
-      if (this.saving) return;
+      if (this.saving) return this.writes;
       this.saving = true;
       this.writes = (async () => {
         try {
@@ -4031,10 +4039,11 @@ var __publicField = (obj, key, value) => {
             this.latest = undefined;
             await lib.$store.setTab(this.key, next);
           }
-        } catch (error) {
-          console.error("OCS progress update failed", error);
         } finally { this.saving = false; }
       })();
+      // Tick updates are fire-and-forget; final completion must still observe failures.
+      this.writes.catch(error => console.error("OCS progress update failed", error));
+      return this.writes;
     },
     describe(value) {
       if (!value) return "";
@@ -4060,7 +4069,7 @@ var __publicField = (obj, key, value) => {
         active: true, started: Date.now(), pending: new Set(), phase: "running", polling: false,
         publish() {
           const pending = this.pending.values().next().value;
-          owner.save({
+          return owner.save({
             phase: this.phase, paused: worker.isStop, pending: this.pending.size,
             batch: pending?.batch || 0, service: pending?.service || "",
             total: results.length, requested: results.filter(r => r.requested).length,
@@ -4106,7 +4115,7 @@ var __publicField = (obj, key, value) => {
           } catch { end("unreachable"); }
         },
         finish(phase = "done") {
-          if (!this.active) return;
+          if (!this.active) return this.completion;
           this.active = false;
           this.phase = phase;
           clearInterval(this.ticker);
@@ -4116,7 +4125,8 @@ var __publicField = (obj, key, value) => {
           worker.off("stop", changed);
           worker.off("continuate", changed);
           worker.off("close", closed);
-          this.publish();
+          this.completion = this.publish();
+          return this.completion;
         }
       };
       const changed = () => state.publish();
@@ -4393,8 +4403,11 @@ var __publicField = (obj, key, value) => {
       // Filling separate questions may overlap; persist result updates in order.
       let resultUpdates = Promise.resolve();
       const updateResult = (result, index) => {
+        if (this.isClose) return Promise.resolve();
         progress?.publish();
-        const next = resultUpdates.then(() => this.opts.onResultsUpdate?.(result, index, results));
+        const next = resultUpdates.then(() => {
+          if (!this.isClose) return this.opts.onResultsUpdate?.(result, index, results);
+        });
         resultUpdates = next.catch(() => {});
         return next;
       };
@@ -4486,7 +4499,7 @@ var __publicField = (obj, key, value) => {
                 res = await work2(result.ctx);
               }
             } else {
-              error = "搜索不到答案, 请重新运行, 或者忽略此题。";
+              error = result.error || "搜索不到答案, 请重新运行, 或者忽略此题。";
             }
           } catch (err) {
             error = (err == null ? void 0 : err.message) || err;
@@ -4579,8 +4592,11 @@ var __publicField = (obj, key, value) => {
         progress?.finish("error");
         throw error;
       } finally {
-        this.isRunning = false;
-        progress?.finish();
+        try {
+          await progress?.finish();
+        } finally {
+          this.isRunning = false;
+        }
       }
       return results;
     }
@@ -8154,6 +8170,7 @@ ${content}</tr>
     let startBtnPressed = false;
     let checkFailed = false;
     let running = false;
+    let starting = false;
     const createWorkControlPanel = () => {
       const { controlBtn, restartBtn, startBtn } = createWorkerControl({
         workerProvider: () => worker,
@@ -8216,31 +8233,52 @@ ${content}</tr>
         );
       });
     }
-    const workOptions = CommonProject.scripts.settings.methods.getWorkOptions();
+    const precheckOptions = CommonProject.scripts.settings.methods.getWorkOptions();
     let checkMessage = workPreCheckMessage({
       onrun: () => startBtnPressed === false && start2(),
       onclose: (_, closedMsg) => checkMessage = closedMsg,
       onNoAnswererWrappers: () => {
         checkFailed = true;
       },
-      ...workOptions,
+      ...precheckOptions,
       start_delay_seconds: options.start_delay_seconds
     });
     const start2 = async () => {
       var _a, _b, _c, _d;
-      await ((_a = options.beforeRunning) == null ? void 0 : _a.call(options));
-      running = true;
-      worker = options.workerProvider(workOptions);
-      if (worker) {
-        (_b = options.onWorkerCreated) == null ? void 0 : _b.call(options, worker);
-      }
-      const { container: container2, controlBtn } = createWorkControlPanel();
-      (_d = (_c = script2.panel) == null ? void 0 : _c.body) == null ? void 0 : _d.replaceChildren(container2, workResultPanel());
-      worker == null ? void 0 : worker.once("done", () => {
+      if (starting) return;
+      starting = true;
+      try {
+        // Settings can change after this page opens, including in the desktop app.
+        if (hasRustDesktop()) await refreshManagedAI();
+        const workOptions = CommonProject.scripts.settings.methods.getWorkOptions();
+        if (workOptions.answererWrappers.length === 0) {
+          throw new Error("请先在“答题来源”中选择 AI 或其他题库，再开始搜题。");
+        }
+        await ((_a = options.beforeRunning) == null ? void 0 : _a.call(options));
+        checkFailed = false;
+        running = true;
+        worker = options.workerProvider(workOptions);
+        if (worker) {
+          (_b = options.onWorkerCreated) == null ? void 0 : _b.call(options, worker);
+        }
+        const { container: container2, controlBtn } = createWorkControlPanel();
+        (_d = (_c = script2.panel) == null ? void 0 : _c.body) == null ? void 0 : _d.replaceChildren(container2, workResultPanel());
+        worker == null ? void 0 : worker.once("done", () => {
+          running = false;
+          globalControlPanel = null;
+          controlBtn.disabled = true;
+        });
+      } catch (error) {
+        worker == null ? void 0 : worker.emit("close");
+        worker = void 0;
         running = false;
+        checkFailed = true;
         globalControlPanel = null;
-        controlBtn.disabled = true;
-      });
+        lib.$message.error({ duration: 0, content: "无法开始答题：" + String(error) });
+        script2.emit("render");
+      } finally {
+        starting = false;
+      }
     };
   }
   function createWorkerControl(options) {
@@ -9106,12 +9144,17 @@ ${content}</tr>
               container2.style.width = "400px";
               const progress = lib.h("div", { className: "rust-work-progress", role: "status" });
               progress.style.cssText = "white-space:pre-line;padding:10px 12px;margin:8px 0;background:#eef6ff;color:#23466a;border-radius:6px;font-size:12px;line-height:1.8";
+              let progressRevision = 0;
               const showProgress = value => {
+                progressRevision++;
                 progress.textContent = rustWorkProgress.describe(value);
                 progress.hidden = !value;
               };
-              lib.$store.getTab(rustWorkProgress.key).then(showProgress);
-              lib.$store.addTabChangeListener(rustWorkProgress.key, showProgress);
+              Promise.resolve(lib.$store.addTabChangeListener(rustWorkProgress.key, showProgress)).then(async () => {
+                const revision = progressRevision;
+                const value = await lib.$store.getTab(rustWorkProgress.key);
+                if (revision === progressRevision) showProgress(value);
+              }).catch(error => console.error("OCS progress read failed", error));
               let scrollPercent = 0;
               const list = lib.h("div", { className: "work-result-list" });
               let mouseoverIndex = -1;
@@ -9134,8 +9177,10 @@ ${content}</tr>
                   }
                 }
               };
-              const render2 = debounce_1$1(async () => {
+              let renderRevision = 0;
+              const renderLatest = debounce_1$1(async revision => {
                 const results = await CommonProject.scripts.workResults.methods.getResults();
+                if (revision !== renderRevision) return;
                 if (results == null ? void 0 : results.length) {
                   if (results[this.cfg.currentResultIndex] === void 0) {
                     this.cfg.currentResultIndex = 0;
@@ -9266,7 +9311,7 @@ ${content}</tr>
                       lib.$ui.space(
                         [
                           lib.h("span", `已搜题: ${this.cfg.requestedCount}/${this.cfg.totalQuestionCount}`),
-                          lib.h("span", `已答题: ${this.cfg.resolvedCount}/${this.cfg.totalQuestionCount}`),
+                          lib.h("span", `已处理: ${this.cfg.resolvedCount}/${this.cfg.totalQuestionCount}`),
                           lib.h("a", "提示", (btn) => {
                             btn.style.cursor = "pointer";
                             btn.onclick = () => {
@@ -9299,6 +9344,7 @@ ${content}</tr>
                   )
                 );
               }, 100);
+              const render2 = () => renderLatest(++renderRevision);
               const createResult = (result) => {
                 if (result) {
                   return lib.h("div", [
@@ -9318,7 +9364,8 @@ ${content}</tr>
               this.onConfigChange("totalQuestionCount", render2);
               this.onConfigChange("requestedCount", render2);
               this.onConfigChange("resolvedCount", render2);
-              lib.$store.addChangeListener(TAB_WORK_RESULTS_KEY, render2);
+              Promise.resolve(lib.$store.addTabChangeListener(TAB_WORK_RESULTS_KEY, render2))
+                .then(render2).catch(error => console.error("OCS results subscription failed", error));
               return container2;
             }
           };
@@ -16475,7 +16522,7 @@ ${content}</tr>
           }
           return;
         }
-        CommonProject.scripts.workResults.methods.setResults(simplifyWorkResult(res, workOrExamQuestionTitleTransform));
+        await CommonProject.scripts.workResults.methods.setResults(simplifyWorkResult(res, workOrExamQuestionTitleTransform));
         CommonProject.scripts.workResults.methods.updateWorkStateByResults(res);
         if ((_b = current.result) == null ? void 0 : _b.finish) {
           CommonProject.scripts.apps.methods.addQuestionCacheFromWorkResult(
@@ -17247,7 +17294,7 @@ ${content}</tr>
         },
         async onResultsUpdate(curr, _, res) {
           var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
-          CommonProject.scripts.workResults.methods.setResults(
+          await CommonProject.scripts.workResults.methods.setResults(
             simplifyWorkResult(res, chapterTestTaskQuestionTitleTransform)
           );
           if ((_a = curr.result) == null ? void 0 : _a.finish) {

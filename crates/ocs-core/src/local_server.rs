@@ -184,7 +184,7 @@ async fn handle(State(s): State<Arc<LocalServer>>, req: Request) -> Response {
                 }
                 reply(200, json!({"ok":true}))
             }
-            "/api/local-userscript" => {
+            "/api/local-userscript" | "/api/local-userscript/ocs.user.js" => {
                 let requested = params.get("path").map(String::as_str).unwrap_or("");
                 let allowed = snap["render"]["scripts"].as_array().is_some_and(|a| {
                     a.iter().any(|v| {

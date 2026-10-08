@@ -55,6 +55,29 @@ fn from_search_path(name: &str) -> Option<PathBuf> {
         .find(|path| is_executable(path))
 }
 
+#[cfg(windows)]
+pub(crate) fn windows_app_executable(bin: &Path) -> Option<PathBuf> {
+    let mut versions: Vec<_> = fs::read_dir(bin)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            (8..=64).contains(&name.len()) && name.bytes().all(|c| c.is_ascii_hexdigit())
+        })
+        .map(|entry| entry.path().join("codex.exe"))
+        .filter(|path| is_executable(path))
+        .collect();
+    versions.sort_by_cached_key(|path| {
+        std::cmp::Reverse(fs::metadata(path).and_then(|m| m.modified()).ok())
+    });
+    versions.into_iter().next().or_else(|| {
+        let path = bin.join("codex.exe");
+        is_executable(&path).then_some(path)
+    })
+}
+
 fn executable(current: &str) -> Option<PathBuf> {
     let current = current.trim();
     let configured = if current.contains('/') || current.contains('\\') {
@@ -82,6 +105,13 @@ fn executable(current: &str) -> Option<PathBuf> {
             ] {
                 candidates.push(dir.join(binary));
             }
+        }
+    }
+    // Desktop updates replace the versioned executable; check that installation before PATH.
+    #[cfg(windows)]
+    if let Some(local) = env::var_os("LOCALAPPDATA") {
+        if let Some(path) = windows_app_executable(&PathBuf::from(local).join("OpenAI/Codex/bin")) {
+            candidates.push(path);
         }
     }
     if let Some(path) = from_search_path("codex") {

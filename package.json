@@ -23,6 +23,7 @@
     "build:settings": "node scripts/rust/build-settings.mjs",
     "build:rust": "node scripts/rust/build.mjs",
     "test:rust": "cargo test -p ocs-core --locked",
+    "test:userscript": "node scripts/rust/test-userscript.mjs",
     "dev:rust": "pnpm build:adapter && pnpm build:settings && tauri dev --no-default-features",
     "build:release": "node scripts/rust/build.mjs --skip-tests",
     "release:pack": "node scripts/rust/package-release.mts"

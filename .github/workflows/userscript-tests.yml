@@ -1,0 +1,39 @@
+name: Userscript regressions
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets/*.user.js'
+      - 'tests/**'
+      - 'scripts/rust/test-userscript.mjs'
+      - '**/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/userscript-tests.yml'
+  pull_request:
+    paths:
+      - 'assets/*.user.js'
+      - 'tests/**'
+      - 'scripts/rust/test-userscript.mjs'
+      - '**/package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/userscript-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  userscript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.21.0'
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @ocs-desktop/app exec playwright-core install --with-deps chromium
+      - run: pnpm test:userscript

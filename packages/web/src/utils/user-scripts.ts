@@ -21,7 +21,7 @@ export function addScriptFromFile() {
 		});
 }
 
-async function addLocalScript(uri: string, text: string) {
+export async function addLocalScript(uri: string, text: string) {
 	if (await remote.fs.call('existsSync', uri)) {
 		const metadata = getMetadataFromScript(text);
 		if (metadata === undefined) {

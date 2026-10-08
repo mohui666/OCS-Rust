@@ -504,7 +504,9 @@ async function initScripts(urls: string[], browser: BrowserContext) {
 	// 检测脚本是否安装/更新完毕
 	const tryInstall = async () => {
 		if (browser.pages().length !== 0) {
-			const installPage = browser.pages().find((p) => /extension:\/\//.test(p.url()));
+			const installPage = browser.pages().find(
+				(p) => /extension:\/\//.test(p.url()) && /\/(?:install|ask)\.html(?:[?#]|$)/.test(p.url())
+			);
 			if (installPage) {
 				// 置顶页面，防止点击安装失败
 				await installPage.bringToFront();
