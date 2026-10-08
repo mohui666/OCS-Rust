@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 const cargo = join(homedir(), '.cargo', 'bin');
 const skipTests = process.argv.includes('--skip-tests');
-const env = {...process.env, PATH: cargo + (process.platform==='win32'?';':':') + process.env.PATH};
-function run(command,args){const r=spawnSync(command,args,{stdio:'inherit',env,shell:process.platform==='win32'});if(r.status!==0)process.exit(r.status||1);}
+const env = {...process.env, PATH: process.env.PATH + (process.platform==='win32'?';':':') + cargo};
+function run(command,args){const r=spawnSync(command,args,{stdio:'inherit',env,shell:process.platform==='win32'&&/\.(cmd|bat)$/i.test(command)});if(r.error)console.error(r.error);if(r.status!==0)process.exit(r.status||1);}
 run(process.execPath,['scripts/rust/build-adapter.mjs']);
 run(process.execPath,['scripts/rust/build-settings.mjs']);
 if (!skipTests) run(process.execPath,['tests/settings-smoke.cjs']);

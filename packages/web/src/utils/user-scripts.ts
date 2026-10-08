@@ -21,14 +21,16 @@ export function addScriptFromFile() {
 		});
 }
 
-async function addLocalScript(uri: string, text: string) {
+export async function addLocalScript(uri: string, text: string) {
 	if (await remote.fs.call('existsSync', uri)) {
 		const metadata = getMetadataFromScript(text);
 		if (metadata === undefined) {
 			Message.error('脚本格式不正确，请选择能够解析的用户脚本。');
+			return false;
 		} else {
 			if (store.render.scripts.find((s) => s.url === uri)) {
 				Message.warning('当前脚本已安装。');
+				return true;
 			} else {
 				const id = Date.now();
 				store.render.scripts.push({
@@ -53,7 +55,9 @@ async function addLocalScript(uri: string, text: string) {
 		}
 	} else {
 		Message.warning('文件不存在。');
+		return false;
 	}
+	return true;
 }
 
 export async function addScriptFromUrl(url: string) {

@@ -18,7 +18,7 @@
 
 ## 环境与命令
 
-使用 Rust stable、Node.js 24、pnpm 10。已构建环境为 macOS Apple Silicon、Rust 1.99.0、Node 24.19.0、pnpm 10.21.0。系统库要求见 [Tauri 官方文档](https://v2.tauri.app/start/prerequisites/)。
+使用 Rust stable、Node.js 22 或 24、pnpm 10（项目固定版本为 10.21.0）。本版在 macOS arm64 / Rust 1.99.0 / Node 24.19.0 和 Windows x64 / Rust 1.97.1 / Node 22.19.0 原生构建；两台本机构建机使用已有 pnpm 11。系统库要求见 [Tauri 官方文档](https://v2.tauri.app/start/prerequisites/)。
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts
@@ -35,7 +35,22 @@ pnpm build:release
 pnpm release:pack
 ```
 
-当前分包工具支持 macOS 原生构建，输出到 `dist/release/v<桌面版本>/`。不要在 Apple Silicon 上直接把文件改名为 Windows、Linux 或 Intel 版；Node 运行时跟随构建机平台和架构一起打包。
+macOS 分包输出到 `dist/release/v<桌面版本>/`。Windows 原生构建输出为 `target/release/bundle/nsis/OCS Rust_<桌面版本>_x64-setup.exe`。不要在 Apple Silicon 上直接把文件改名为 Windows、Linux 或 Intel 版；Node 运行时跟随构建机平台和架构一起打包。
+
+合并两平台发行包时，先在两端检出同一发布提交并分别完成原生构建。在 Windows PowerShell 执行：
+
+```powershell
+pnpm build
+./scripts/rust/prepare-windows-release.ps1
+```
+
+该脚本检查 Windows EXE、NSIS 安装程序和随包 Node 的版本与架构，输出 `dist/release/v<桌面版本>/windows-x64/`，内含安装程序及 `windows-build.json`。将整个目录复制到 macOS，在已构建且源码干净的同一提交下执行：
+
+```sh
+pnpm release:pack --windows-package /absolute/path/to/windows-x64
+```
+
+分包工具核对两端源码提交、桌面与脚本版本、Windows 安装包大小和哈希，然后生成包含两个桌面包的统一清单。Windows 构建记录不包含本机路径、账号或配置。
 
 macOS 应用位置为 `target/release/bundle/macos/OCS Rust.app`，CLI 为 `target/release/ocs-bridge` 和 `target/release/ocs-migrate`。本地构建使用 ad-hoc 签名；设置 `APPLE_SIGNING_IDENTITY` 时保留 Tauri 的指定签名流程。普通构建不等于 Apple 公证。
 
@@ -82,14 +97,14 @@ node tests/adapter-smoke.mjs /absolute/path/to/chromium
 - 桌面版本源：`Cargo.toml` 的 `workspace.package.version`，同步 `src-tauri/tauri.conf.json` 与根 `package.json`。界面版本从 Cargo 包版本读取。
 - 脚本版本源：`assets/ocs-rust.user.js` 的 `@version`，使用独立 SemVer。迁移和分包会读取该字段。
 - 上游基线只记录在 README / 更新记录中，不再混入发行版本。
-- 首发配套：桌面 `0.1.0` + 脚本 `0.1.0`。本次综合 Release 的标签为 `v0.1.0`；今后仅脚本更新可使用 `userscript-v<版本>` 标签。
+- 本版配套：桌面 `0.1.1` + 脚本 `0.1.1`，综合 Release 标签为 `v0.1.1`。仅脚本更新可使用 `userscript-v<版本>` 标签。
 - 分包工具检查版本一致性、实际架构、签名，以及包内脚本与源码的哈希，生成独立 ZIP、原始 `.user.js`、清单与 `SHA256SUMS.txt`。
 
 ## 发布流程
 
 1. 更新版本、变更记录和相关文档，只提交需要公开的源码与文件。
 2. 在目标系统构建，记录本次检查与未验证范围；不要将本机配置、Cookie、日志或备份装进包。
-3. 执行 `pnpm release:pack`，检查输出清单与 ZIP 内容。
+3. 执行 `pnpm release:pack`；同时发行 Windows 时使用上面的 `--windows-package` 流程。检查输出清单、ZIP 内容与安装程序版本。
 4. 推送源码和对应标签，在 GitHub 创建 Release，分别上传桌面包、脚本包、原始脚本、清单及校验文件。
 5. 检查远端 Release 状态、下载文件名、大小和 SHA-256。
 

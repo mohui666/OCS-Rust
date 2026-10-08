@@ -1,17 +1,17 @@
 # OCS Rust 用户脚本
 
-当前脚本版本：**0.1.0**。这是本分支的独立语义化版本，上游基线 `4.15.3` 仅用于溯源，不再拼接进发行版本号。
+当前脚本版本：**0.1.1**。这是本分支的独立语义化版本，上游基线 `4.15.3` 仅用于溯源，不再拼接进发行版本号。
 
 ## 下载和安装
 
-从 [GitHub Releases](https://github.com/mohui666/OCS-Rust/releases/latest) 下载 `ocs-rust.user.js` 或 `OCS-Rust-Userscript-0.1.0.zip`。ZIP 内是同一份脚本、本文和许可证。
+从 [GitHub Releases](https://github.com/mohui666/OCS-Rust/releases/latest) 下载 `ocs-rust.user.js` 或 `OCS-Rust-Userscript-0.1.1.zip`。ZIP 内是同一份脚本、本文和许可证。
 
 1. 在浏览器中安装 ScriptCat 或 Tampermonkey。
 2. 将 Release 中 `ocs-rust.user.js` 的下载链接交给管理器安装。ScriptCat 可以使用管理页面「新建脚本 → 链接导入」；也可在管理器的新建脚本编辑器中粘贴文件完整内容并保存。
 3. 如果原来已安装本分支的 OCS 脚本，确认更新目标是原条目。只保留一份启用的 OCS，避免重复运行。
-4. 重新加载课程页，确认面板版本为 `0.1.0`。
+4. 重新加载课程页，确认面板版本为 `0.1.1`。
 
-早期本机版本使用 `4.15.3+unlimited.1.rust.N`，数字比较可能将新的 `0.1.0` 视为较低版本。首次切换请手动安装或覆盖原条目；不要同时启用旧版和新版。当前保留 `@updateURL none`，不会自动切回上游脚本，后续更新请从本仓库 Release 获取。
+早期本机版本使用 `4.15.3+unlimited.1.rust.N`，数字比较可能将新的 `0.1.1` 视为较低版本。首次切换请手动安装或覆盖原条目；不要同时启用旧版和新版。当前保留 `@updateURL none`，不会自动切回上游脚本，后续更新请从本仓库 Release 获取。旧版 OCS 更新公告不再自动弹出，脚本的手动更新模块指向本项目 Releases。
 
 ## 脚本和桌面如何配合
 

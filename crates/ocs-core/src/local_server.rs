@@ -184,7 +184,7 @@ async fn handle(State(s): State<Arc<LocalServer>>, req: Request) -> Response {
                 }
                 reply(200, json!({"ok":true}))
             }
-            "/api/local-userscript" => {
+            "/api/local-userscript" | "/api/local-userscript.user.js" => {
                 let requested = params.get("path").map(String::as_str).unwrap_or("");
                 let allowed = snap["render"]["scripts"].as_array().is_some_and(|a| {
                     a.iter().any(|v| {
@@ -344,4 +344,46 @@ async fn icon(url: &str) -> Response {
         }
     }
     response(200,br##"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><circle cx="24" cy="24" r="20" fill="#e8f1ff" stroke="#4678b4"/><path d="M4 24h40M24 4v40" stroke="#4678b4"/></svg>"##.to_vec(),"image/svg+xml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+
+    #[tokio::test]
+    async fn userscript_install_url_requires_capability_and_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("fixture.user.js");
+        let code = "// ==UserScript==\n// @name Fixture\n// ==/UserScript==";
+        std::fs::write(&script, code).unwrap();
+        std::fs::write(
+            dir.path().join("config.json"),
+            serde_json::to_vec(&json!({
+                "render":{"scripts":[{"isLocalScript":true,"url":script}]},
+                "server":{"port":12345,"authToken":"test-token"}
+            })).unwrap(),
+        ).unwrap();
+        let state = Arc::new(LocalServer {
+            store: Arc::new(Storage::with_key(dir.path().into(), dir.path().into(), [3;32]).unwrap()),
+            events: Arc::new(|_| {}),
+            ai_control: Arc::new(|_, _| Box::pin(async { Ok(Value::Null) })),
+        });
+        for (endpoint, token, file, expected) in [
+            ("local-userscript.user.js", "test-token", script.clone(), 200),
+            ("local-userscript", "test-token", script.clone(), 200),
+            ("local-userscript.user.js", "wrong-token", script, 403),
+            ("local-userscript.user.js", "test-token", dir.path().join("unregistered.user.js"), 403),
+        ] {
+            let mut url = reqwest::Url::parse(&format!("http://127.0.0.1:12345/api/{endpoint}")).unwrap();
+            url.query_pairs_mut().append_pair("path", &file.to_string_lossy()).append_pair("token", token);
+            let request = Request::builder().uri(url.as_str()).header("Host", "127.0.0.1:12345").body(Body::empty()).unwrap();
+            let response = handle(State(state.clone()), request).await;
+            assert_eq!(response.status(), expected);
+            if expected == 200 {
+                assert_eq!(response.headers()["Content-Type"], "application/javascript");
+                assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap().as_ref(), code.as_bytes());
+            }
+        }
+    }
 }

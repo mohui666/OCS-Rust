@@ -234,7 +234,7 @@ import { remote } from '../utils/remote';
 import { reactive, watch, nextTick, onMounted } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
 import { installExtensions } from '../utils/extension';
-import { addScriptFromUrl } from '../utils/user-scripts';
+import { addLocalScript, addScriptFromUrl } from '../utils/user-scripts';
 
 import { Environment } from '../utils/environment';
 import { getDefaultBrowserName, newBrowser } from '../utils/browser';
@@ -392,7 +392,14 @@ const _preset_steps = {
 				return;
 			}
 			step.description = `正在安装默认脚本：` + default_user_script.name;
-			await addScriptFromUrl(default_user_script.url);
+			const url = default_user_script.url;
+			const installed = url.startsWith('http')
+				? await addScriptFromUrl(url)
+				: await addLocalScript(url, String(await remote.fs.call('readFileSync', url)));
+			if (!installed) {
+				step.error = '默认脚本安装失败，请检查脚本文件后重试。';
+				return;
+			}
 			step.description = `已安装用户脚本：${default_user_script.name} - ${default_user_script.url}`;
 		}
 	} as Step
@@ -611,6 +618,11 @@ async function setup() {
 		}
 	} catch (err) {
 		console.error(err);
+		const step = state.steps[state.current_step];
+		if (step) {
+			step.status = 'error';
+			step.error = String(err);
+		}
 		Message.error('初始化失败 : ' + err);
 		emits('error', String(err));
 	}

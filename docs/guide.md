@@ -2,11 +2,13 @@
 
 ## 安装与首次启动
 
-当前 Release 提供 macOS Apple Silicon（arm64）桌面包。解压 ZIP，将 `OCS Rust.app` 拖入「应用程序」。包内包含运行所需的 Node 与 Playwright 适配器，不要求使用者另外安装 Node；Chromium 和扩展由初始化向导准备，不在桌面 ZIP 中。
+当前 Release 提供 Windows x64 安装程序和 macOS Apple Silicon（arm64）桌面包。Windows 运行 `OCS-Rust-Desktop-0.1.1-windows-x64-setup.exe`；macOS 解压 ZIP，将 `OCS Rust.app` 拖入「应用程序」。包内包含运行所需的 Node 与 Playwright 适配器，不要求使用者另外安装 Node；Chromium 和扩展由「工具 → 初始化设置」准备，不在桌面包中。
+
+启动时不再自动显示旧公告、教程和初始化窗口。首次使用请手动打开初始化设置，完成后创建浏览器。
 
 此版本使用 ad-hoc 签名，没有 Apple 公证。macOS 可能显示来源提示，由使用者决定是否通过系统「隐私与安全性」允许打开。首次访问配置加密密钥时，也可能出现钥匙串窗口；密码只在 macOS 系统窗口输入。更新后的本地签名身份变化可能再次触发钥匙串授权。
 
-应用与旧版 `OCS Desktop` 分开存放数据。macOS 默认目录为 `~/Library/Application Support/local.ocs.rust`。正常退出应用会关闭其管理的浏览器和本次题库服务。
+应用与旧版 `OCS Desktop` 分开存放数据。macOS 默认目录为 `~/Library/Application Support/local.ocs.rust`；Windows 默认为 `%APPDATA%\local.ocs.rust`，程序安装在 `%LOCALAPPDATA%\OCS Rust`。正常退出应用会关闭其管理的浏览器和本次题库服务。
 
 ## 浏览器和脚本
 
@@ -64,7 +66,7 @@ API Key 使用系统钥匙串保护的密钥加密保存在本机。课程弹窗
 
 ## 更新与卸载
 
-更新桌面前正常退出 OCS，用新包替换应用；数据目录保持独立。脚本可以单独更新，更新后重新加载已打开的课程页面。上游 Electron 安装包不能用于更新本分支。
+更新桌面前正常退出 OCS；Windows 运行新版安装程序，macOS 用新包替换应用。数据目录保持独立。脚本可以单独更新，更新后重新加载已打开的课程页面。上游 Electron 安装包不能用于更新本分支。
 
 卸载应用不会主动删除数据目录。如需清除浏览器资料和配置，应先自行备份，再通过系统文件管理器处理对应数据目录；钥匙串条目名为 `local.ocs.rust`。
 

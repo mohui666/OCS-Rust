@@ -6,7 +6,7 @@ export async function getWindowsRelease() {
 
 	if (release.startsWith('6.1')) {
 		return 'win7';
-	} else if (parseInt(release.split('.').at(-1) || '0') > 22000) {
+	} else if (parseInt(release.split('.')[2] || '0') >= 22000) {
 		return 'win11';
 	} else {
 		return 'win10';

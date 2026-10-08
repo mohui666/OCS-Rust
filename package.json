@@ -1,6 +1,6 @@
 {
   "name": "ocs-rust",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rust/Tauri OCS desktop with native AI question banks and a separately distributed userscript",
   "packageManager": "pnpm@10.21.0",
   "files": [

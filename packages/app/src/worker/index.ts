@@ -490,6 +490,7 @@ async function initScripts(urls: string[], browser: BrowserContext) {
 	let installCont = 0;
 	let retryCount = 0;
 	const maxRetries = 120;
+	const existingPages = new Set(browser.pages());
 
 	// 触发下载
 	await (async () => {
@@ -503,29 +504,42 @@ async function initScripts(urls: string[], browser: BrowserContext) {
 
 	// 检测脚本是否安装/更新完毕
 	const tryInstall = async () => {
+		if (++retryCount > maxRetries) {
+			throw new Error('脚本安装超时，请检查脚本管理器后重试');
+		}
+		if (browser.pages().length === 0) {
+			throw new Error('脚本安装未完成，浏览器已关闭');
+		}
 		if (browser.pages().length !== 0) {
-			const installPage = browser.pages().find((p) => /extension:\/\//.test(p.url()));
+			const installPage = browser.pages().find((p) =>
+				!existingPages.has(p) && /extension:\/\//.test(p.url()) && /\/(?:install|ask)\.html(?:[?#]|$)/.test(p.url())
+			);
 			if (installPage) {
 				// 置顶页面，防止点击安装失败
 				await installPage.bringToFront();
 				await sleep(1000);
-				const closed = await installPage.evaluate(() => {
+				const clicked = await installPage.evaluate(() => {
 					const btn = (document.querySelector('[class*="primary"]') ||
 						document.querySelector('[type*="button"]')) as HTMLElement;
 					// （由渲染进程版本检查过滤），直接点击按钮安装/更新
-					btn?.click();
-					if (!btn) {
+					if (!btn || (btn instanceof HTMLButtonElement && btn.disabled)) {
 						return false;
 					}
+					btn.click();
+					return true;
 				});
 
-				if (!closed) {
-					await sleep(1000).then(() => installPage.close());
+				if (!clicked) {
+					await tryInstall();
+					return;
 				}
 
-				if (installPage.isClosed()) {
-					installCont++;
+				// The installer closes itself after saving; closing it ourselves can
+				// mistake a restored settings tab or a failed install for success.
+				if (!installPage.isClosed()) {
+					await installPage.waitForEvent('close', { timeout: 15000 });
 				}
+				installCont++;
 				if (installCont < urls.length) {
 					retryCount = 0;
 					await tryInstall();
@@ -533,11 +547,6 @@ async function initScripts(urls: string[], browser: BrowserContext) {
 			} else if (installCont === urls.length) {
 				//
 			} else {
-				retryCount++;
-				if (retryCount > maxRetries) {
-					console.error('脚本安装超时，跳过未安装的脚本');
-					return;
-				}
 				await sleep(1000);
 				await tryInstall();
 			}
@@ -585,13 +594,7 @@ async function setupUserScripts(opts: {
 	if (userscripts.length) {
 		await step('正在安装用户脚本...（如长时间未完成请尝试重启浏览器 ）');
 		// 载入本地脚本
-		try {
-			await initScripts(userscripts, browser);
-		} catch (e) {
-			// @ts-ignore
-			console.error('脚本安装失败：', e.message);
-			// await html('脚本载入失败，请手动更新，或者忽略。' + e.message);
-		}
+		await initScripts(userscripts, browser);
 	} else {
 		if (enabledScriptCount === 0) {
 			warn.push('检测到您的软件中并未开启任何用户脚本，可能会导致预期脚本不运行。');

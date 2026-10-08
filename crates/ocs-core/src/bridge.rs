@@ -12,7 +12,7 @@ use axum::{
     response::Response,
     Router,
 };
-use futures_util::FutureExt;
+use futures_util::{FutureExt, StreamExt};
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -561,6 +561,18 @@ async fn handler(State(b): State<Arc<Bridge>>, req: Request) -> Response {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
     if !(1..=262144).contains(&len) {
+        // Dropping an unread upload can reset the TCP connection on Windows
+        // before the client receives 413. Discard it without buffering, using
+        // the same deadline as accepted requests so a stalled upload is bounded.
+        let mut body = req.into_body().into_data_stream();
+        let _ = tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(chunk) = body.next().await {
+                if chunk.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
         return reply(413, json!({"code":0,"msg":"请求须在 1 至 262144 字节之间"}));
     }
     let invalid = || reply(400, json!({"code":0,"msg":"题目参数无效或 JSON 格式错误"}));

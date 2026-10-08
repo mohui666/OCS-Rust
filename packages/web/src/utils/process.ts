@@ -118,7 +118,7 @@ export class Process extends EventEmitter {
     userDataDir:this.browser.cachePath,
     enabledScriptCount:result.enabledScriptCount,
     userscripts:result.scriptsToInstall.map(item=>item.script.isLocalScript
-     ? 'http://localhost:'+store.server.port+'/api/local-userscript?path='+encodeURIComponent(item.script.info?.code_url||item.script.url)+'&token='+encodeURIComponent(store.server.authToken)
+     ? 'http://localhost:'+store.server.port+'/api/local-userscript.user.js?path='+encodeURIComponent(item.script.info?.code_url||item.script.url)+'&token='+encodeURIComponent(store.server.authToken)
      : item.script.info?.code_url||item.script.url),
     ...this.launchOptions
    });

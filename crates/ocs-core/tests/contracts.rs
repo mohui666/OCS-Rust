@@ -477,6 +477,75 @@ async fn http_contract_and_security() {
     assert_eq!(status["timeout_unlimited"], true);
     task.abort();
 }
+#[tokio::test]
+async fn oversized_http_uploads_return_errors_and_preserve_valid_requests() {
+    let (bridge, base, task) = server().await;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap();
+    let answer = format!("{base}/t/test-token/answer");
+    for len in [0, 262145, 4 * 1024 * 1024] {
+        let response = client
+            .post(&answer)
+            .header("Content-Type", "application/json")
+            .body(vec![b'x'; len])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 413, "upload length {len}");
+        let error: Value = response.json().await.unwrap();
+        assert_eq!(error["code"], 0);
+        assert!(error["msg"].as_str().unwrap().contains("262144"));
+    }
+    assert_eq!(bridge.status().await["codex_calls"], 0);
+
+    // A valid JSON request exactly at the limit remains accepted afterwards.
+    let mut body = serde_json::to_vec(&question(0)).unwrap();
+    body.resize(262144, b' ');
+    let response = client
+        .post(&answer)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let result: Value = response.json().await.unwrap();
+    assert_eq!(result["code"], 1);
+    assert_eq!(bridge.status().await["codex_calls"], 1);
+    task.abort();
+}
+
+#[tokio::test]
+async fn stalled_oversized_http_upload_has_a_deadline() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let (bridge, base, task) = server().await;
+    let address = base.strip_prefix("http://").unwrap();
+    let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    // Declare an oversized upload but never send its body.
+    stream
+        .write_all(
+            format!(
+                "POST /t/test-token/answer HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: 4194304\r\nConnection: close\r\n\r\n"
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut response = Vec::new();
+    tokio::time::timeout(Duration::from_secs(15), stream.read_to_end(&mut response))
+        .await
+        .expect("stalled upload must not keep its handler alive indefinitely")
+        .unwrap();
+    let response = String::from_utf8(response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 413"), "{response}");
+    assert!(response.contains("262144"), "{response}");
+    assert_eq!(bridge.status().await["codex_calls"], 0);
+    task.abort();
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn child_pipes_do_not_deadlock() {

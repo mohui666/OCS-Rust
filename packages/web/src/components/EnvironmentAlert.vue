@@ -45,21 +45,23 @@
 				</div>
 			</a-alert>
 
-			<Setup
-				v-model:visible="envState.envSetupFixVisible"
-				confirm-text="开始修复"
-				cancel-text="稍后再说"
-				:title="envState.setupTitle"
-				:create-new-browser="false"
-				:preset-steps="['show_desc', 'init_env']"
-				@close="
-					() => {
-						updateEnvironmentDetect();
-					}
-				"
-			></Setup>
 		</div>
 	</div>
+	<Setup
+		v-model:visible="envState.envSetupFixVisible"
+		confirm-text="开始修复"
+		cancel-text="稍后再说"
+		:title="envState.setupTitle"
+		:create-new-browser="false"
+		:preset-steps="['show_desc', 'init_env', 'init_extensions', 'init_script']"
+		@finish="
+			() => {
+				envState.envSetupFixVisible = false;
+				updateEnvironmentDetect();
+			}
+		"
+		@update:visible="(visible) => { if (!visible) updateEnvironmentDetect(); }"
+	></Setup>
 </template>
 
 <script setup lang="ts">

@@ -5,9 +5,6 @@
 	>
 		<!-- ====================== 浏览器列表内容部分 ======================-->
 
-		<!-- Banner 提示 -->
-		<NotificationBanner class="mb-2" />
-
 		<a-card
 			class="operations-card"
 			:bordered="true"
@@ -92,7 +89,6 @@ import { root } from '../../fs/folder';
 import FileMultipleOperators from '../../components/browsers/FileMultipleOperators.vue';
 import BrowserList from '../../components/BrowserList.vue';
 import { computed } from 'vue';
-import NotificationBanner from '../../components/NotificationBanner.vue';
 import { IconDesktop, IconTag, IconCode, IconFolder } from '@arco-design/web-vue/es/icon';
 import { store } from '../../store';
 import RightClickOpenMenuTip from '../../components/RightClickOpenMenuTip.vue';

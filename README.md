@@ -10,19 +10,20 @@ OCS Desktop 的 Rust / Tauri 分支，提供浏览器管理、课程用户脚本
 
 | 文件 | 用途 |
 | --- | --- |
-| `OCS-Rust-Desktop-0.1.0-macos-arm64.zip` | Apple Silicon Mac 桌面应用，解压后拖入「应用程序」 |
-| `OCS-Rust-Userscript-0.1.0.zip` | 用户脚本、安装说明与许可证 |
+| `OCS-Rust-Desktop-0.1.1-windows-x64-setup.exe` | Windows x64 安装程序，本次在 Windows 11 实机验证 |
+| `OCS-Rust-Desktop-0.1.1-macos-arm64.zip` | Apple Silicon Mac 桌面应用，解压后拖入「应用程序」 |
+| `OCS-Rust-Userscript-0.1.1.zip` | 用户脚本、安装说明与许可证 |
 | `ocs-rust.user.js` | 可直接交给 ScriptCat / Tampermonkey 安装的脚本 |
 | `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值 |
 | `release-manifest.json` | 桌面版本、脚本版本、源码提交和产物信息 |
 
-首发桌面包为 **macOS arm64**；未提供 Windows、Linux 或 Intel Mac 二进制，也没有将这些平台标为已验证。macOS 包使用本地 ad-hoc 签名，**未经过 Apple Developer ID 签名或公证**。
+本版提供 **Windows x64** 和 **macOS arm64**，不提供 Linux 或 Intel Mac 二进制。Windows 安装包未做代码签名；macOS 包使用本地 ad-hoc 签名，**未经过 Apple Developer ID 签名或公证**。已执行的检查和未验证功能见[验证范围](docs/verification.md)。
 
-桌面包随附同版本脚本用于初始化和设置界面；脚本包可单独下载和更新，不包含桌面程序、浏览器或任何账户配置。
+桌面 `0.1.1` 随附用户脚本 `0.1.1`，与独立脚本包内容一致，用于初始化和设置界面；脚本包可单独下载和更新，不包含桌面程序、浏览器或任何账户配置。
 
 ## 开始使用
 
-1. 安装并打开 `OCS Rust.app`，通过初始化向导准备兼容的 Chromium 与脚本管理扩展。
+1. 安装并打开 OCS Rust，从 **工具 → 初始化设置** 准备兼容的 Chromium 与脚本管理扩展。启动时不再自动弹出公告、教程或初始化窗口。
 2. 启动 OCS 管理的浏览器，登录课程平台并选择课程。当前使用有窗口浏览器。
 3. 在脚本中打开 **⚙️ 全局设置 → AI / 其他题库设置**。
 4. 选择 **GPT 登录态**或 **API Key**，选择模型并保存。使用 AI 时再打开「使用 AI 答题」。其他题库在旁边的页签管理。
@@ -45,7 +46,7 @@ AI 服务随应用就绪；只有启用 AI 答题并实际搜题才调用模型�
 
 ## 从源码构建
 
-需要 Rust stable、Node.js 24、pnpm 10，以及目标系统的 [Tauri 2 构建依赖](https://v2.tauri.app/start/prerequisites/)。
+需要 Rust stable、Node.js 22 或 24、pnpm 10，以及目标系统的 [Tauri 2 构建依赖](https://v2.tauri.app/start/prerequisites/)。
 
 ```sh
 git clone https://github.com/mohui666/OCS-Rust.git
@@ -54,7 +55,7 @@ pnpm install --frozen-lockfile --ignore-scripts
 pnpm dev
 ```
 
-`pnpm build` 执行构建和已有测试；`pnpm build:release` 只做构建和类型检查。macOS 构建后执行 `pnpm release:pack`，生成分开的桌面包、脚本包及校验清单。详细流程见[开发文档](docs/development.md)。
+`pnpm build` 执行构建和已有测试；`pnpm build:release` 只做构建和类型检查。Windows 构建生成 NSIS 安装程序；macOS 构建后执行 `pnpm release:pack`，生成分开的桌面包、脚本包及校验清单，也可合并 Windows 原生构建的安装包。详细流程见[开发文档](docs/development.md)。
 
 ## 许可与归属
 

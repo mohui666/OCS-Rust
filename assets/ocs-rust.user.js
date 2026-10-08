@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name       				OCS 网课助手
-// @version    				0.1.0
+// @version    				0.1.1
 // @description				OCS(online-course-script) 网课助手，官网 https://docs.ocsjs.com ，专注于帮助大学生从网课中释放出来 让自己的时间把握在自己的手中，拥有人性化的操作页面，流畅的步骤提示，支持  【超星学习通】 【知到智慧树】 【职教云】 【智慧职教】 【中国大学MOOC】 【雨课堂】 等网课的学习，作业。具体的功能请查看脚本悬浮窗中的教程页面。
 // @author     				enncy
 // @license    				MIT
@@ -7593,105 +7593,25 @@ ${content}</tr>
         namespace: "background.update",
         configs: {
           notes: {
-            defaultValue: "脚本自动更新模块，如果有新的版本会自动通知。"
-          },
-          autoNotify: {
-            defaultValue: true,
-            label: "开启更新通知",
-            attrs: { type: "checkbox", title: "当有最新的版本时自动弹窗通知，默认开启" }
-          },
-          notToday: {
-            defaultValue: -1
-          },
-          ignoreVersions: {
-            defaultValue: []
+            defaultValue: "OCS Rust 更新由项目 Releases 提供，不自动弹出更新公告。"
           }
         },
-        methods() {
-          return {
-            getLastVersion: async () => {
-              return await request("https://cdn.ocsjs.com/ocs-version.json?t=" + Date.now(), {
-                method: "get",
-                type: "GM_xmlhttpRequest"
-              });
-            }
-          };
-        },
-        async onrender({ panel }) {
-          var _a;
-          const version = await this.methods.getLastVersion();
+        onrender({ panel }) {
           const infos = lib.$gm.getInfos();
           if (!infos) {
             return;
           }
-          const changeLog = lib.h("button", { className: "base-style-button-secondary" }, "📄查看更新日志");
-          changeLog.onclick = () => CommonProject.scripts.apps.methods.showChangelog();
-          const updatePage = ((_a = this.startConfig) == null ? void 0 : _a.updatePage) || "";
           panel.body.replaceChildren(
             lib.h("div", { className: "card" }, [
-              lib.h("hr"),
-              lib.h("div", ["最新版本：" + version["last-version"] + " - ", changeLog]),
-              lib.h("hr"),
-              lib.h("div", "当前版本：" + infos.script.version),
+              lib.h("div", "当前脚本版本：" + infos.script.version),
               lib.h("div", "脚本管理器：" + infos.scriptHandler),
-              lib.h("div", ["脚本更新链接：", lib.h("a", { target: "_blank", href: updatePage }, [updatePage || "无"])])
+              lib.h("div", ["下载更新：", lib.h("a", {
+                target: "_blank",
+                rel: "noopener noreferrer",
+                href: "https://github.com/mohui666/OCS-Rust/releases"
+              }, ["OCS Rust Releases"])])
             ])
           );
-          console.log("versions", {
-            notToday: this.cfg.notToday,
-            ignoreVersions: this.cfg.ignoreVersions,
-            version
-          });
-        },
-        oncomplete() {
-          if (this.cfg.autoNotify && lib.$.isInTopWindow()) {
-            if (this.cfg.notToday === -1 || this.cfg.notToday !== new Date().getDate()) {
-              const infos = lib.$gm.getInfos();
-              if (infos) {
-                if (!!valid_1(infos.script.version) === false) {
-                  lib.$message.error(`当前版本号 (${infos.script.version}) 不符合semver版本书写规范，请重新修改版本。`);
-                  return;
-                }
-                setTimeout(async () => {
-                  var _a;
-                  const version = await this.methods.getLastVersion();
-                  const last = version["last-version"];
-                  if (this.cfg.ignoreVersions.includes(last) === false && gt_1(last, infos.script.version)) {
-                    const updatePage = ((_a = this.startConfig) == null ? void 0 : _a.updatePage) || "";
-                    const modal2 = lib.$modal.confirm({
-                      maskCloseable: false,
-                      width: 600,
-                      content: lib.$ui.notes([`检测到新版本发布 ${last} ：`, [...version.notes || []]]),
-                      footer: lib.h("div", [
-                        lib.h("button", { className: "base-style-button-secondary", innerText: "跳过此版本" }, (btn) => {
-                          btn.onclick = () => {
-                            this.cfg.ignoreVersions = [...this.cfg.ignoreVersions, last];
-                            modal2 == null ? void 0 : modal2.remove();
-                          };
-                        }),
-                        lib.h("button", { className: "base-style-button-secondary", innerText: "今日不再提示" }, (btn) => {
-                          btn.onclick = () => {
-                            this.cfg.notToday = new Date().getDate();
-                            modal2 == null ? void 0 : modal2.remove();
-                          };
-                        }),
-                        lib.h("button", { className: "base-style-button", innerText: "前往更新" }, (btn) => {
-                          btn.onclick = () => {
-                            if (updatePage) {
-                              window.open(updatePage, "_blank");
-                              modal2 == null ? void 0 : modal2.remove();
-                            } else {
-                              lib.$message.error({ content: "无法前往更新页面，更新链接为空" });
-                            }
-                          };
-                        })
-                      ])
-                    });
-                  }
-                }, 5 * 1e3);
-              }
-            }
-          }
         }
       }),
       dev: new lib.Script({
@@ -21424,6 +21344,6 @@ const infos = GM_info;
 			defaultPanelName: CommonProject.scripts.guide.namespace,
 			title: `OCS-${infos.script.version}`
 		},
-		updatePage: 'https://docs.ocsjs.com/docs/update'
+		updatePage: 'https://github.com/mohui666/OCS-Rust/releases'
 	});
 })();

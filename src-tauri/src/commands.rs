@@ -133,9 +133,14 @@ pub async fn call(s: &Arc<AppState>, op: &str, a: &[Value]) -> Result<Value> {
         "os.platform"|"methods.getPlatform"=>Ok(json!(platform::platform())),
         "os.release"=>{
             let mut command=std::process::Command::new(if cfg!(windows){"cmd"}else{"uname"});
-            if cfg!(windows){command.args(["/C","ver"]);}else{command.arg("-r");}
+            if cfg!(windows){command.args(["/D","/C","ver"]);}else{command.arg("-r");}
             let output=command.output()?;if !output.status.success(){bail!("无法读取系统版本")}
-            Ok(json!(String::from_utf8(output.stdout)?.trim()))
+            if cfg!(windows){
+                let text=String::from_utf8_lossy(&output.stdout);
+                let version=text.split(|c:char| !c.is_ascii_digit()&&c!='.')
+                    .find(|part| part.split('.').count()>=3).context("无法解析 Windows 版本")?;
+                Ok(json!(version))
+            }else{Ok(json!(String::from_utf8(output.stdout)?.trim()))}
         },
         "app.getVersion"=>Ok(json!(env!("CARGO_PKG_VERSION"))),
         "app.getAppPath"=>Ok(json!(s.store.resources)),

@@ -155,8 +155,8 @@ const _store: AppStore & { render: WebStore } = defaultsDeep(remote['electron-st
 		},
 		langs: {},
 		state: {
-			first: true,
-			setup: true,
+			first: false,
+			setup: false,
 			newBrowserSetup: false,
 			mini: false,
 			responsive: 'small',
@@ -172,6 +172,10 @@ const _store: AppStore & { render: WebStore } = defaultsDeep(remote['electron-st
 
 // Removed mode must not be reactivated by persisted preferences.
 Reflect.deleteProperty(_store.render.setting.launchOptions, 'headless');
+
+// Dialog visibility is session state, including when opening older saved profiles.
+_store.render.state.setup = false;
+_store.render.state.newBrowserSetup = false;
 
 /** 数据存储对象 */
 export const store: AppStore & { render: WebStore } = reactive(_store);

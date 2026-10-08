@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--windows-package')) {
+	throw new Error('用法：pnpm release:pack [--windows-package <Windows 分包目录>]');
+}
 const command = (name: string, args: string[]) => execFileSync(name, args, { cwd: root, encoding: 'utf8' }).trim();
 const readJson = async (path: string) => JSON.parse(await readFile(path, 'utf8'));
 const sha256 = async (path: string) => {
@@ -45,6 +49,27 @@ command('codesign', ['--verify', '--deep', '--strict', app]);
 
 const out = join(root, 'dist/release', `v${desktopVersion}`);
 await mkdir(out, { recursive: true });
+const sourceCommit = command('git', ['rev-parse', 'HEAD']);
+const targets = [{ platform: runtime.platform, arch: runtime.arch, node: runtime.node, playwright: runtime.playwright }];
+const additionalFiles: string[] = [];
+if (args.length) {
+	const folder = resolve(args[1]);
+	const windows = await readJson(join(folder, 'windows-build.json'));
+	const expectedName = `OCS-Rust-Desktop-${desktopVersion}-windows-x64-setup.exe`;
+	if (windows.project !== 'OCS Rust' || windows.sourceCommit !== sourceCommit || windows.desktopVersion !== desktopVersion ||
+		windows.scriptVersion !== scriptVersion || windows.target?.platform !== 'win32' || windows.target?.arch !== 'x64' ||
+		windows.file?.name !== expectedName || windows.userscriptSha256 !== await sha256(script)) {
+		throw new Error('Windows 分包的源码提交、版本、平台或脚本与当前发布不一致。');
+	}
+	const installer = join(folder, expectedName);
+	if ((await stat(installer)).size !== windows.file.bytes || await sha256(installer) !== windows.file.sha256) {
+		throw new Error('Windows 安装包大小或 SHA-256 与原生构建记录不一致。');
+	}
+	const destination = join(out, expectedName);
+	await cp(installer, destination);
+	additionalFiles.push(destination);
+	targets.push(windows.target);
+}
 const desktopZip = join(out, `OCS-Rust-Desktop-${desktopVersion}-macos-${runtime.arch}.zip`);
 const scriptZip = join(out, `OCS-Rust-Userscript-${scriptVersion}.zip`);
 const rawScript = join(out, 'ocs-rust.user.js');
@@ -64,20 +89,21 @@ try {
 	await rm(temporary, { recursive: true, force: true });
 }
 await cp(script, rawScript);
-const files = await Promise.all([desktopZip, scriptZip, rawScript].map(async (path) => ({
+const files = await Promise.all([desktopZip, ...additionalFiles, scriptZip, rawScript].map(async (path) => ({
 	name: basename(path), bytes: (await stat(path)).size, sha256: await sha256(path)
 })));
 const manifest = join(out, 'release-manifest.json');
 await writeFile(manifest, JSON.stringify({
 	project: 'OCS Rust',
 	repository: 'https://github.com/mohui666/OCS-Rust',
-	sourceCommit: command('git', ['rev-parse', 'HEAD']),
+	sourceCommit,
 	desktopVersion, scriptVersion,
 	upstream: { desktop: '2.12.0', desktopCommit: 'ecc6bb7ee79cb713caab7e896a913383e9437a14', userscript: '4.15.3' },
 	target: { platform: runtime.platform, arch: runtime.arch, node: runtime.node, playwright: runtime.playwright },
+	targets,
 	createdAt: new Date().toISOString(),
-	checks: { userscriptSyntax: 'passed', packageVersions: 'matched', bundledScript: 'matched', macOSSignatureIntegrity: 'passed' },
-	validation: 'Build, type checking and package integrity only. No new automated, model-answer or course-submission tests. See docs/verification.md.',
+	checks: { userscriptSyntax: 'passed', packageVersions: 'matched', bundledScript: 'matched', macOSSignatureIntegrity: 'passed', ...(additionalFiles.length ? { windowsSourceAndInstaller: 'matched' } : {}) },
+	validation: 'Package checks cover versions, source provenance, bundled resources and hashes. Build, test and desktop verification results and untested real-model/course flows are documented in docs/verification.md.',
 	files
 }, null, 2) + '\n');
 files.push({ name: basename(manifest), bytes: (await stat(manifest)).size, sha256: await sha256(manifest) });

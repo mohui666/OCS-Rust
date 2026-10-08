@@ -37,6 +37,7 @@
 			<Setup
 				v-model:visible="store.render.state.setup"
 				:preset-steps="['show_desc', 'init_env', 'init_extensions', 'init_script']"
+				@finish="updateEnvironmentDetect"
 			></Setup>
 
 			<!-- 全局：新建浏览器自动初始化 -->
@@ -64,7 +65,7 @@ import { remote } from './utils/remote';
 import { root } from './fs/folder';
 import { electron } from './utils/node';
 import { closeAllBrowser, showClearBrowserCachesModal } from './utils/browser';
-import { about, changeTheme, fetchRemoteNotify, fetchRemoteLangs, setAlwaysOnTop, setAutoLaunch } from './utils';
+import { changeTheme, fetchRemoteLangs, setAlwaysOnTop, setAutoLaunch } from './utils';
 import { activeIpcRenderListener } from './utils/ipc';
 import { getWindowsRelease } from './utils/os';
 import { currentBrowser } from './fs';
@@ -76,8 +77,10 @@ import Title from './components/Title.vue';
 import BrowserPanel from './components/browsers/BrowserPanel.vue';
 import BrowserPanelOperators from './components/BrowserPanelOperators.vue';
 import Setup from './components/Setup.vue';
+import { useEnvironmentDetect } from './composables/useEnvironmentDetect';
 
 const { ipcRenderer } = electron;
+const { updateEnvironmentDetect } = useEnvironmentDetect();
 
 /** Rust encrypts and atomically persists the complete store. */
 let persistence = Promise.resolve();
@@ -120,17 +123,9 @@ onMounted(async () => {
 	setAlwaysOnTop();
 	changeTheme().catch(console.error);
 
-	/** 打开关于软件 */
-	if (store.render.state.first) {
-		about().catch(console.error);
-	}
-
 	/** 监听屏幕变化 */
 	onResize();
 	window.addEventListener('resize', onResize);
-
-	/** 获取最新远程通知 */
-	fetchRemoteNotify(false).catch(console.error);
 
 	/** 获取远程语言 */
 	fetchRemoteLangs().catch(console.error);

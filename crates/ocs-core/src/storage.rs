@@ -195,6 +195,9 @@ impl Storage {
         }
         v["name"] = json!("OCS Rust");
         v["version"] = json!(env!("CARGO_PKG_VERSION"));
+        if v["render"]["scripts"].is_null() {
+            v["render"]["scripts"] = json!([]);
+        }
         // A packaged app may move independently of its data directory.
         if let Some(scripts) = v["render"]["scripts"].as_array_mut() {
             for script in scripts {
@@ -347,6 +350,17 @@ mod tests {
         assert!(s.check(&t.path().join("config.json"), true).is_err());
     }
     #[test]
+    fn fresh_and_saved_null_script_lists_are_initialized() {
+        let t = tempfile::tempdir().unwrap();
+        let store = Storage::with_key(t.path().into(), t.path().join("app"), [1; 32]).unwrap();
+        assert_eq!(store.snapshot()["render"]["scripts"], json!([]));
+        let mut value = store.snapshot();
+        value["render"]["scripts"] = Value::Null;
+        store.save(value).unwrap();
+        let reopened = Storage::with_key(t.path().into(), t.path().join("app"), [1; 32]).unwrap();
+        assert_eq!(reopened.snapshot()["render"]["scripts"], json!([]));
+    }
+    #[test]
     fn bundled_script_follows_relocated_app() {
         let t = tempfile::tempdir().unwrap();
         let store = Storage::with_key(t.path().into(), t.path().join("old-app"), [1; 32]).unwrap();
@@ -359,7 +373,7 @@ mod tests {
         let moved = Storage::with_key(t.path().into(), t.path().join("new-app"), [1; 32]).unwrap();
         assert_eq!(
             moved.snapshot()["render"]["scripts"][0]["url"],
-            json!(t.path().join("new-app/assets/ocs-rust.user.js"))
+            json!(t.path().join("new-app").join("assets/ocs-rust.user.js"))
         );
         assert_eq!(
             moved.snapshot()["render"]["scripts"][1]["url"],
