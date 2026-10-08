@@ -24,6 +24,7 @@ anyhow = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 uuid = { version = "1", features = ["v4"] }
 dirs = "6"
+dunce = "1"
 chrono = "0.4"
 base64 = "0.22"
 xcap = "0.9"

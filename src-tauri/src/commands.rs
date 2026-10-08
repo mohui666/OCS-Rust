@@ -135,7 +135,7 @@ pub async fn call(s: &Arc<AppState>, op: &str, a: &[Value]) -> Result<Value> {
             let mut command=std::process::Command::new(if cfg!(windows){"cmd"}else{"uname"});
             if cfg!(windows){command.args(["/C","ver"]);}else{command.arg("-r");}
             let output=command.output()?;if !output.status.success(){bail!("无法读取系统版本")}
-            Ok(json!(String::from_utf8(output.stdout)?.trim()))
+            Ok(json!(String::from_utf8_lossy(&output.stdout).trim()))
         },
         "app.getVersion"=>Ok(json!(env!("CARGO_PKG_VERSION"))),
         "app.getAppPath"=>Ok(json!(s.store.resources)),

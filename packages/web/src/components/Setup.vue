@@ -234,7 +234,7 @@ import { remote } from '../utils/remote';
 import { reactive, watch, nextTick, onMounted } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
 import { installExtensions } from '../utils/extension';
-import { addScriptFromUrl } from '../utils/user-scripts';
+import { addLocalScript, addScriptFromUrl } from '../utils/user-scripts';
 
 import { Environment } from '../utils/environment';
 import { getDefaultBrowserName, newBrowser } from '../utils/browser';
@@ -392,7 +392,12 @@ const _preset_steps = {
 				return;
 			}
 			step.description = `正在安装默认脚本：` + default_user_script.name;
-			await addScriptFromUrl(default_user_script.url);
+			if (default_user_script.url.startsWith('http')) {
+				await addScriptFromUrl(default_user_script.url);
+			} else {
+				const code = await remote.fs.call('readFileSync', default_user_script.url, { encoding: 'utf8' });
+				await addLocalScript(default_user_script.url, String(code));
+			}
 			step.description = `已安装用户脚本：${default_user_script.name} - ${default_user_script.url}`;
 		}
 	} as Step

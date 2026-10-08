@@ -53,6 +53,8 @@ impl AppState {
 }
 fn resource_dir(app: &tauri::AppHandle) -> Result<PathBuf> {
     let bundled = app.path().resource_dir()?;
+    // Node's module loader cannot resolve Windows verbatim paths reliably.
+    let bundled = dunce::simplified(&bundled).to_path_buf();
     if bundled.join("adapter/worker.cjs").exists() {
         return Ok(bundled);
     }
@@ -67,6 +69,7 @@ fn setup(handle: tauri::AppHandle) -> Result<()> {
     let root = std::env::var_os("OCS_RUST_DATA")
         .map(PathBuf::from)
         .unwrap_or(handle.path().app_data_dir()?);
+    let root = dunce::simplified(&root).to_path_buf();
     let storage = Arc::new(Storage::open(root.clone(), resources.clone())?);
     let adapter = if resources.join("adapter").exists() {
         resources.join("adapter")

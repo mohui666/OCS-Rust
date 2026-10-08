@@ -196,7 +196,11 @@ impl Storage {
         v["name"] = json!("OCS Rust");
         v["version"] = json!(env!("CARGO_PKG_VERSION"));
         // A packaged app may move independently of its data directory.
-        if let Some(scripts) = v["render"]["scripts"].as_array_mut() {
+        if let Some(scripts) = v
+            .get_mut("render")
+            .and_then(|render| render.get_mut("scripts"))
+            .and_then(Value::as_array_mut)
+        {
             for script in scripts {
                 if script["isLocalScript"] == true
                     && script["url"].as_str().is_some_and(|p| {
@@ -359,7 +363,7 @@ mod tests {
         let moved = Storage::with_key(t.path().into(), t.path().join("new-app"), [1; 32]).unwrap();
         assert_eq!(
             moved.snapshot()["render"]["scripts"][0]["url"],
-            json!(t.path().join("new-app/assets/ocs-rust.user.js"))
+            json!(t.path().join("new-app").join("assets/ocs-rust.user.js"))
         );
         assert_eq!(
             moved.snapshot()["render"]["scripts"][1]["url"],
