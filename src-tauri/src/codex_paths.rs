@@ -78,6 +78,25 @@ pub(crate) fn windows_app_executable(bin: &Path) -> Option<PathBuf> {
     })
 }
 
+#[cfg(windows)]
+pub(crate) fn windows_preferred_executable(
+    configured: Option<PathBuf>,
+    bin: &Path,
+    npm: Option<&Path>,
+) -> Option<PathBuf> {
+    let legacy = configured.as_ref().is_some_and(|current| {
+        let current = fs::canonicalize(current).ok();
+        npm.into_iter()
+            .chain(std::iter::once(bin.join("codex.exe").as_path()))
+            .any(|path| current.is_some() && current == fs::canonicalize(path).ok())
+    });
+    // Previous auto-detection persisted these fallbacks as if they were explicit choices.
+    if configured.is_some() && !legacy {
+        return configured;
+    }
+    windows_app_executable(bin).or(configured)
+}
+
 fn executable(current: &str) -> Option<PathBuf> {
     let current = current.trim();
     let configured = if current.contains('/') || current.contains('\\') {
@@ -86,6 +105,17 @@ fn executable(current: &str) -> Option<PathBuf> {
         from_search_path(current)
     } else {
         None
+    };
+    #[cfg(windows)]
+    let configured = if let Some(local) = env::var_os("LOCALAPPDATA") {
+        let npm = env::var_os("APPDATA").map(|dir| PathBuf::from(dir).join("npm/codex.cmd"));
+        windows_preferred_executable(
+            configured,
+            &PathBuf::from(local).join("OpenAI/Codex/bin"),
+            npm.as_deref(),
+        )
+    } else {
+        configured
     };
     if configured.is_some() {
         return configured;
@@ -105,13 +135,6 @@ fn executable(current: &str) -> Option<PathBuf> {
             ] {
                 candidates.push(dir.join(binary));
             }
-        }
-    }
-    // Desktop updates replace the versioned executable; check that installation before PATH.
-    #[cfg(windows)]
-    if let Some(local) = env::var_os("LOCALAPPDATA") {
-        if let Some(path) = windows_app_executable(&PathBuf::from(local).join("OpenAI/Codex/bin")) {
-            candidates.push(path);
         }
     }
     if let Some(path) = from_search_path("codex") {
